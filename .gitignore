@@ -1,0 +1,53 @@
+# Local agent registry cache
+.atl/
+
+# macOS metadata
+.DS_Store
+
+# Unity-generated project data
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/.utmp/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Build and test outputs
+/[Bb]uild/
+/[Bb]uilds/
+/[Tt]est[Rr]esults/
+*.apk
+*.aab
+*.apks
+*.obb
+*.log
+
+# Generated IDE files and local settings
+/.vs/
+/.idea/
+*.csproj
+*.unityproj
+*.sln
+*.slnx
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Signing materials and local secrets
+*.keystore
+*.jks
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example

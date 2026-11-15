@@ -1,0 +1,6 @@
+{
+  "name": "FlagFootball.Core",
+  "rootNamespace": "FlagFootball.Core",
+  "autoReferenced": false,
+  "noEngineReferences": true
+}

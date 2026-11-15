@@ -1,0 +1,6 @@
+{
+  "name": "FlagFootball.Unity",
+  "rootNamespace": "FlagFootball.Unity",
+  "references": ["FlagFootball.Core"],
+  "autoReferenced": false
+}

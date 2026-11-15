@@ -1,0 +1,7 @@
+{
+  "name": "FlagFootball.Editor",
+  "rootNamespace": "FlagFootball.Editor",
+  "references": ["FlagFootball.Unity", "Unity.RenderPipelines.Universal.Runtime"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}
