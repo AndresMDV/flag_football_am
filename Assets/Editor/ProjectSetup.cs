@@ -61,6 +61,60 @@ namespace FlagFootball.Editor
             Debug.Log("BASELINE_READY: URP pipeline and Bootstrap scene created through Editor APIs.");
         }
 
+        public static void ConfigurePlayerMovement()
+        {
+            var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+            var placeholder = GameObject.Find("Placeholder");
+            if (!placeholder) throw new InvalidOperationException("The baseline placeholder is missing.");
+            placeholder.transform.localScale = new Vector3(0.6f, 1f, 1f);
+            var player = placeholder.GetComponent<PlayerMovement>();
+            if (!player) player = placeholder.AddComponent<PlayerMovement>();
+            var serialized = new SerializedObject(player);
+            serialized.FindProperty("movementView").objectReferenceValue = Camera.main;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            if (!placeholder.transform.Find("FacingMarker"))
+            {
+                var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                marker.name = "FacingMarker";
+                marker.transform.SetParent(placeholder.transform, false);
+                marker.transform.localPosition = new Vector3(0f, 0.25f, 0.6f);
+                marker.transform.localScale = Vector3.one * 0.25f;
+                marker.GetComponent<Renderer>().sharedMaterial =
+                    AssetDatabase.LoadAssetAtPath<Material>(SettingsPath + "Ground.mat");
+                UnityEngine.Object.DestroyImmediate(marker.GetComponent<Collider>());
+            }
+            if (!EditorSceneManager.SaveScene(scene, ScenePath))
+                throw new InvalidOperationException("Failed to save the movement scene.");
+            Debug.Log("MOVEMENT_SCENE_READY");
+        }
+
+        public static void ConfigureRunningCamera()
+        {
+            var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+            var player = GameObject.Find("Placeholder").GetComponent<PlayerMovement>();
+            var ground = GameObject.Find("Ground").GetComponent<Renderer>();
+            ground.transform.localScale = new Vector3(2f, 1f, 2f);
+            var movement = new SerializedObject(player);
+            movement.FindProperty("fieldMinimum").vector2Value = new Vector2(-10f, -10f);
+            movement.FindProperty("fieldMaximum").vector2Value = new Vector2(10f, 10f);
+            movement.FindProperty("footprintRadius").floatValue = 2f;
+            movement.ApplyModifiedPropertiesWithoutUndo();
+            var view = Camera.main;
+            var follower = view.GetComponent<RunningCamera>();
+            if (!follower) follower = view.gameObject.AddComponent<RunningCamera>();
+            var cameraSettings = new SerializedObject(follower);
+            cameraSettings.FindProperty("target").objectReferenceValue = player;
+            cameraSettings.FindProperty("field").objectReferenceValue = ground;
+            cameraSettings.ApplyModifiedPropertiesWithoutUndo();
+            view.orthographic = true;
+            view.orthographicSize = 2.2f;
+            view.transform.rotation = Quaternion.Euler(60f, 0f, 0f);
+            view.transform.position = player.transform.position + new Vector3(0f, 7f, -7f / Mathf.Tan(60f * Mathf.Deg2Rad));
+            if (!EditorSceneManager.SaveScene(scene, ScenePath))
+                throw new InvalidOperationException("Failed to save the running camera scene.");
+            Debug.Log("RUNNING_CAMERA_SCENE_READY");
+        }
+
         private static Material CreateMaterial(string name, Color color)
         {
             var shader = Shader.Find("Universal Render Pipeline/Lit");

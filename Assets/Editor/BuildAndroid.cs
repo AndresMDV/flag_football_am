@@ -22,6 +22,11 @@ namespace FlagFootball.Editor
             if (!AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath))
                 throw new InvalidOperationException("The Bootstrap scene is missing.");
 
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.AutoRotation;
+            PlayerSettings.allowedAutorotateToPortrait = false;
+            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+            PlayerSettings.allowedAutorotateToLandscapeLeft = true;
+            PlayerSettings.allowedAutorotateToLandscapeRight = true;
             PlayerSettings.productName = "Flag Football Prototype";
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, PackageName);
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);

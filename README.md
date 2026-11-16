@@ -1,6 +1,6 @@
 # Flag Football Android Prototype
 
-A minimal Unity URP baseline for an offline 5v5 flag football prototype. This increment proves project initialization, assembly boundaries, and automated tests. It does not implement gameplay.
+A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap includes one bounded, automatically facing placeholder controlled by a fixed bottom-left touch joystick. A bounded, fixed-orientation running camera follows the character.
 
 ## Run the checks
 
@@ -21,16 +21,137 @@ The runner uses Unity batch mode with Android as the active build target. It del
 
 | Path | Responsibility |
 | --- | --- |
-| `Assets/Core` | Pure C# assembly with engine references disabled. Its marker supports architectural checks; no game rules exist yet. |
-| `Assets/Unity` | Unity-facing components, currently scene initialization only. May reference Core, never the reverse. |
+| `Assets/Core` | Pure C# movement, bounds, joystick gesture rules and constrained camera smoothing; engine references disabled. |
+| `Assets/Unity` | Scene initialization, movement/touch adapters, runtime visuals and camera projection/framing. May reference Core, never the reverse. |
 | `Assets/Editor` | One-time baseline asset/scene setup, plus the repeatable Android development build action. Setup refuses to overwrite existing baseline assets. |
-| `Assets/Tests/EditMode` | Core assembly identity and absence of Unity engine/editor dependencies. |
-| `Assets/Tests/PlayMode` | Real scene loading, `Awake` initialization, camera/placeholder presence, and URP assignment. |
+| `Assets/Tests/EditMode` | Movement behavior plus assembly identity and absence of Unity dependencies. |
+| `Assets/Tests/PlayMode` | Actual Bootstrap movement/field adapter, lifecycle, camera/placeholder presence and URP assignment. |
 | `Assets/Scenes/Bootstrap.unity` | Initial scene with a camera, directional light, ground, and an orange placeholder cube. |
 
 Add this repository root as an existing project in Unity Hub and open it with the pinned Editor. The scene, URP assets, project settings, and `.meta` files were created by the Editor, not hand-authored serialized scene data. Keep assets together with their metadata.
 
-## Build and launch the Android baseline
+## Bounded movement (#9)
+
+`PlayerMovement.SetMoveInput(Vector2)` accepts screen-right/up input. Magnitude maps linearly to speed, capped radially at 1 (including diagonals and over-range input). Zero stops on the next `Update`, without acceleration or momentum. The latest input persists until replaced. The touch joystick supplies this boundary and sends zero on release/cancellation or app interruption; no keyboard driver is installed.
+
+| Internal setting | Initial value |
+| --- | --- |
+| Android orientation | Both landscape orientations only; portrait disabled |
+| Maximum speed | 5 world units/second |
+| Test field X/Z limits | -10 to +10 on both axes (the 20 × 20 ground) |
+| Conservative footprint/framing inset | 2 units, retaining room for the elevated body and camera edge margin |
+| Allowed character-center X/Z limits | -8 to +8 |
+| View reference | Bootstrap's translating Main Camera with fixed orientation; horizontal forward/right, independent of character facing |
+
+Change the serialized `PlayerMovement` fields on `Placeholder` in the Inspector before entering Play mode. Bounds are world-space X/Z; keep them aligned with the ground and retain a sufficient footprint radius if resizing visuals. Vertical position is unchanged. Motion uses `Update` time, not physics. Each axis is clamped independently, so tangential motion remains possible at an edge. Facing follows actual travel instantly, retaining the last direction when stopped or fully blocked. The dark `FacingMarker` on the orange body's local +Z makes forward distinguishable. This is a test-field constraint, not match out-of-bounds policy.
+
+The scene was wired using `FlagFootball.Editor.ProjectSetup.ConfigurePlayerMovement` through Unity Editor APIs. It preserves existing baseline assets and can be rerun to reconnect the camera/marker; normally just edit the committed scene.
+
+Verification: `python3 scripts/run_unity_tests.py` passed **30 EditMode + 17 PlayMode tests**, zero failures, Editor exits 0. `AndroidOrientationTests.PlayerSettings_AllowOnlyBothLandscapeOrientations` guards the landscape-only project settings, also enforced by the Android build action. `BoundedMovementTests` covers analog/capped and diagonal speed, view axes, immediate reversal/neutral, all four edges/four corners, tangential facing, custom speed/bounds and frame-size independence. `PlayerMovementTests.PublicInput_MovesAtAnalogAndCappedSpeedThenStops`, `CameraRotationAndDirectionChange_ApplyOnNextFrame` and `FieldEdgesAndCorners_ContainWholePlaceholderAndPermitReturn` drive the real scene adapter across frames, including the entire visual footprint. Baseline checks still pass. These are automated behavior checks, **not physical touch or rendered-visual verification**; parent #8 remains open for the remaining integrated device checks.
+
+Rollback boundary: remove the movement core/adapter, their two test files and metadata, the `ConfigurePlayerMovement` method, and revert Bootstrap's movement component, body scale and marker plus this documentation. The existing bootstrap/build/test baseline is otherwise independent. Later touch/camera increments depend on this movement boundary and must be removed first.
+
+## Touch joystick (#10)
+
+Touch inside the bottom-left circle, drag to change direction/speed, and lift to stop. The original finger remains captured outside the circle, with speed capped and direction still updating. A second finger cannot steal the gesture or inherit it when the owner releases. A touch starting outside must be lifted and started inside to control movement.
+
+| Internal setting on `Bootstrap` | Initial value |
+| --- | --- |
+| Joystick diameter | 240 reference units |
+| Padding from safe-area bottom/left | 64 reference units |
+| Sensitivity | 1 (linear; full speed at one radius, no dead zone) |
+| Canvas scaling | 1920 × 1080 reference, matched to screen height |
+
+Edit the serialized joystick fields on `SceneBootstrap` before Play mode. The circular pad and handle are created once at startup inside `Screen.safeArea`; no imported UI artwork or additional buttons are needed. At sensitivity 1, half-radius input requests half speed. The handle stays inside the circle while the controlling finger may travel beyond it.
+
+Input uses **Input System 1.20.1 EnhancedTouch** and **uGUI 2.0.0**, with `activeInputHandler: 1` (new Input System only). Changing the backend requires restarting an open Editor. There are no legacy `Input.Get*` calls, keyboard controls, action assets or UI event modules: the adapter polls actual touch phases and screen positions, feeds the engine-free `JoystickGesture`, then calls `PlayerMovement.SetMoveInput` before movement updates. Device and touch IDs together identify the owner.
+
+Release, cancellation, focus loss, pause, disabled controls or a disappearing owning touch neutralize input. Returning resets the acceptance timestamp; only a new `Began` touch starting after return can capture the pad. Focus and pause are tracked separately, so regaining focus while still paused does not enable controls. EnhancedTouch enable/disable calls are balanced and generated UI textures are destroyed with the scene.
+
+`JoystickGestureTests` checks analog capping, overdrag direction/diagonals, ownership, cancellation and configurable sensitivity. `TouchJoystickTests` injects `TouchState` events into a virtual `Touchscreen`, through the real EnhancedTouch/scene/movement path:
+
+- `ActualTouchPath_ControlsAnalogSpeedOverdragDirectionAndRelease`
+- `OtherFinger_CannotStealOrAutomaticallyInheritTheGesture`
+- `TouchCancellation_StopsWithoutRetainingInput`
+- `OutsideTouch_DoesNotActivateWhenDraggedIntoThePad`
+- `FocusPauseAndDisable_RequireFreshTouchesAfterReturn`
+- `FocusReturningBeforeUnpause_DoesNotEnableHeldTouch`
+- `JoystickLayout_StaysInBottomLeftSafeArea`
+
+Tests temporarily route input to the headless game and ignore actual Editor focus, restoring both settings and removing their virtual device afterward. Lifecycle messages are simulated, not physical lock/unlock proof. The independent movement-boundary tests disable the joystick before supplying input directly.
+
+### Physical Pixel checks
+
+The user confirmed these incremental checks on the Pixel 6a using the development APK with SHA-256 `cb8265b105e4c1c0a5441eac26abfe52ea7585827627aa16910fa774f7f0d359`:
+
+| Scenario | Observed result |
+| --- | --- |
+| Scene and orientation | Field, placeholder and landscape presentation visible |
+| Short drag and release | Character moves and stops on finger lift |
+| Near-center versus edge drag | Slower movement near center, faster at the edge |
+| Drag beyond circle and change direction | Movement continues and follows the direction change |
+| Second-finger interference | Original finger retains control |
+| Owner lifts while second finger remains held | Character stops; held finger does not inherit control |
+| Lock/unlock during movement | No stale movement; a fresh touch restores control |
+| Android Home and app return during movement | No stale movement; a fresh touch restores control |
+
+Disabled-component cancellation and outside-start gestures were tested automatically, not separately on the phone. These observations do not establish exhaustive interruption coverage, frame-rate/thermal performance or completed camera tuning. Those checks used the previous static-camera APK; they are not evidence for the new running camera. Integrated field/camera checks remain for #12.
+
+Rollback boundary for #10: remove `JoystickGesture`, `TouchJoystick` and their tests/metadata, restore the bootstrap and test input wiring, remove the added assembly/package references and restore the previous input backend. Keep #9 movement and the landscape configuration intact.
+
+## Bounded running camera (#11)
+
+The orthographic running view follows in `LateUpdate` after player movement. Pitch is fixed; yaw and roll remain zero regardless of character facing. Orthographic projection keeps apparent size constant across the field, trading perspective depth scaling for predictable edge framing. There is no passing view, camera-control UI or automatic view transition.
+
+| Internal setting on Main Camera's `RunningCamera` | Initial value |
+| --- | --- |
+| Height above character center | 7 units |
+| Downward pitch | 60 degrees |
+| Orthographic half-height | 2.2 units (4.4-unit vertical view) |
+| Follow response | 8/second exponential convergence |
+| Player viewport margin | 5% on every side |
+| Test field / center limits | 20 × 20 units / -8 to +8 X/Z |
+| Field grid | 2-unit spacing, visual reference only |
+
+The original 10 × 10 field and 0.75 movement inset were retuned to give the running view room to translate and to contain the projection of the elevated body/marker. The 2-unit inset is conservative camera clearance, not the character's physical radius or final match out-of-bounds policy. Read-only `PlayerMovement.MinimumPosition`/`MaximumPosition` expose the configured center limits.
+
+`RunningCamera` projects all viewport corners and each actor renderer's full AABB onto the flat, axis-aligned ground. It intersects the camera-position intervals that keep the entire viewport on the field and the entire actor inside the inner frame. `BoundedCameraFollow` applies exponential smoothing, then clamps to that intersection. Bounds and visibility win over smoothing during abrupt relocation or clipping risk; the character may be off-center near edges. The view shrinks if needed to fit the field at a changed aspect ratio. Impossible framing is rejected explicitly: tune view size/margin/pitch together with movement inset rather than hiding outside areas.
+
+Edit serialized camera values before Play mode; keep the field flat and world-axis aligned and retain feasible framing. `ProjectSetup.ConfigureRunningCamera` wires the scene through Editor APIs and restores the initial field dimensions/inset and camera preview. The subtle runtime grid makes camera translation observable without final art; its owned material/texture are destroyed with the bootstrap.
+
+`BoundedCameraFollowTests` covers smooth convergence, time-step partition independence, hard safety bounds and impossible intersections. These scene tests drive the public movement input and inspect observable projection, not just private settings:
+
+- `RunningCameraTests.Tracking_IsSmoothAndConvergesAfterMovementStops`
+- `CenterEdgesAndCorners_KeepWholePlayerAndGroundFramedAcrossLandscapeAspects` (16:9, 20:9 and 2.5 aspect; checks every renderer corner and viewport-ground corner along the route)
+- `DirectionChanges_PreserveFixedViewAndScreenRelativeMovement`
+- `SuddenRelocation_UsesVisibilitySafetyInsteadOfLosingThePlayer`
+
+Camera tests use a temporary 1/60-second simulation step and restore it afterward. The independent movement test that deliberately rotates the view disables the camera driver first. Headless geometry checks are not Pixel comfort, rendered-pixel, FPS or thermal evidence.
+
+### Physical Pixel camera checks
+
+The user confirmed these incremental checks on the Pixel 6a using the camera development APK with SHA-256 `4b609d998f9eade5849fee6b57df39b9e000c365c8c7ddba02f2cba82733b1cd`:
+
+| Scenario | Observed result |
+| --- | --- |
+| Short rightward movement and release | Grid scrolls smoothly; camera follows without rotating |
+| Right movement limit and upward traversal to upper-right corner | Character remains visible; no empty outside-field area |
+| Upper-edge traversal to upper-left corner | Character remains visible throughout; no empty outside-field area |
+| Left-edge descent to lower-left corner | Character remains visible, not hidden by joystick; no empty outside-field area |
+| Bottom-edge traversal to lower-right corner | Character remains visible throughout; no empty outside-field area |
+| Diagonal return into the interior and release | Smooth settling without camera rotation or jumps |
+
+All four corners were included in these selected human-reported checks. They are not exhaustive trajectories, frame-by-frame rendered-pixel checks or FPS/thermal measurements. Final integrated input/interruption regression and calibration evidence remain owned by #12.
+
+Rollback boundary for #11: remove the camera core/adapter/tests and metadata, the scene's camera component/preview, grid setup, setup method and camera-specific test wiring; restore the previous field dimensions/inset and documented values. Preserve #9/#10 movement and touch behavior.
+
+## Integrated verification (#12)
+
+The complete runner passes **47 tests**, including two cross-boundary touch → movement → camera checks in `TouchJoystickTests`: `IntegratedTouch_MovesFacesAndDrivesCameraThroughTurnAndRelease` and `IntegratedTouch_BoundsFramingAndFreshInputSurviveInterruption`. The new development APK was built, installed and hash-verified on the Pixel without changing production control/camera values.
+
+See the [integration evidence report](docs/movement-verification.md) for exact source/build identity, named results, calibration values and the parent acceptance matrix. The user confirmed the matching-build touch, automatic-facing, perimeter/four-corner, camera-visibility and lock/app-return checks, and accepted the current control/camera values without further tuning. Earlier APK observations remain separate. Delivery and issue status are tracked on GitHub.
+
+## Build and launch the Android prototype
 
 From the repository root, with the Editor closed:
 
@@ -43,7 +164,7 @@ mkdir -p TestResults/AndroidBuild && \
   -logFile "$PWD/TestResults/AndroidBuild/Editor.log"
 ```
 
-The build action configures and persists a development-only ARM64/IL2CPP APK, OpenGL ES 3, minimum API 25 and target API 36. It selects only `Bootstrap.unity`, uses the default debug signer (not a custom release keystore), and rejects an unsuccessful `BuildReport` or missing APK. Outputs are ignored: `Builds/Android/FlagFootballPrototype.apk`, `build-report.json`, and the Editor log above. The report's total size includes other build artifacts, not just the compressed APK.
+The build action enforces landscape-only orientation and configures a development-only ARM64/IL2CPP APK, OpenGL ES 3, minimum API 25 and target API 36. Landscape-only orientation is also stored in `ProjectSettings/ProjectSettings.asset`. It selects only `Bootstrap.unity`, uses the default debug signer (not a custom release keystore), and rejects an unsuccessful `BuildReport` or missing APK. Outputs are ignored: `Builds/Android/FlagFootballPrototype.apk`, `build-report.json`, and the Editor log above. The report's total size includes other build artifacts, not just the compressed APK.
 
 For deployment, connect only the intended physical Pixel 6a over USB, unlock it, and approve any phone prompts yourself. Confirm the model before installing; do not replace an unrelated app or uninstall anything to bypass a signing conflict:
 
@@ -62,8 +183,10 @@ The expected model is `Pixel 6a`. A first install must report `Success`; use `in
 - Editor: **6000.3.28f1**, revision **8f082d2fe476**.
 - Universal Render Pipeline: **17.3.0**.
 - Unity Test Framework: **1.6.0**.
+- Input System: **1.20.1** (EnhancedTouch).
+- uGUI: **2.0.0**.
 - Dependency versions are recorded in `Packages/manifest.json` and `Packages/packages-lock.json`.
 
 Headless PlayMode checks establish scene/lifecycle behavior and pipeline configuration, not rendered pixels, touch usability, FPS, or thermal performance. The runner's failure path was verified by temporarily breaking an assertion, observing a failed NUnit report and nonzero command exit, then restoring the assertion and rerunning both suites successfully.
 
-GitHub Issues is the specification/task tracker: [prototype specification](https://github.com/AndresMDV/flag_football_am/issues/1). The [Pixel 6a build and visible-launch task](https://github.com/AndresMDV/flag_football_am/issues/7) remains open until human visual confirmation. No cloud services, player accounts, monetization, or optional pre-release automation are part of this baseline.
+GitHub Issues is the specification/task tracker: [prototype specification](https://github.com/AndresMDV/flag_football_am/issues/1). See the [Pixel 6a build and visible-launch evidence](https://github.com/AndresMDV/flag_football_am/issues/7) for the completed baseline; it does not verify this movement increment. No cloud services, player accounts, monetization, or optional pre-release automation are part of this baseline.
