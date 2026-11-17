@@ -80,6 +80,23 @@ Release, cancellation, focus loss, pause, disabled controls or a disappearing ow
 
 Tests temporarily route input to the headless game and ignore actual Editor focus, restoring both settings and removing their virtual device afterward. Lifecycle messages are simulated, not physical lock/unlock proof. The independent movement-boundary tests disable the joystick before supplying input directly.
 
+### Public fresh-input reset (#14 foundation)
+
+A future attempt owner can call `TouchJoystick.ResetInput()` on its joystick reference. The call cancels gesture ownership, immediately clears the player's movement request and centers the handle, then accepts only a new `Began` touch whose start time is strictly after the reset. Existing held touches, their subsequent moves and their release cannot resume movement. Repeated calls, including while disabled, are safe; re-enabling does not revive the held gesture.
+
+This action does not enable/disable controls, freeze movement, reposition the player or create an attempt lifecycle. Standalone startup remains immediately playable. The joystick still supplies input before movement updates; focus, pause and disable handling use the same reset. The caller owns when to reset, while the joystick owns gesture cancellation and freshness.
+
+Verification through actual virtual `Touchscreen` event dispatch:
+
+- `TouchJoystickTests.PublicReset_StopsHeldMovementAndRequiresFreshTouch`: active movement in the field interior, synchronous handle centering, no drift while held/moved/released, then fresh-touch movement.
+- `TouchJoystickTests.PublicReset_RepeatedAndDisabledResetsDoNotReviveHeldTouch`: repeated idle/held/disabled resets, disable/re-enable, stale move/release rejection and fresh recovery.
+
+`python3 scripts/run_unity_tests.py --platform PlayMode --test-filter 'TouchJoystickTests.PublicReset_'` passed **2/2**. Before exposure, the same command failed compilation with CS1061 (no accessible `ResetInput`), runner exit 1 and no XML. After exposure, `python3 scripts/run_unity_tests.py` passed **30 EditMode + 19 PlayMode**, zero failures/skips, Editor exits 0. Ignored XML/log artifacts are under `TestResults/20261117T020328819680Z` (focused) and `TestResults/20261117T020410209579Z` (full); the RED log is under `TestResults/20261117T020259526024Z`.
+
+These are headless input simulations, not new physical touch, Android, rendered-visual or lock/unlock evidence. This is only the first foundation for [#14](https://github.com/AndresMDV/flag_football_am/issues/14): prepared QB/receiver/ball ownership, attempt lifecycle, movement gating, start/restart controls and their integration remain unimplemented. Existing physical evidence below applies only to its named APK.
+
+Rollback this unit independently by restoring `ResetInput` to private, removing its new API comment and the two `PublicReset_` tests, and removing this subsection. No scene, metadata, core, movement or startup changes need reverting.
+
 ### Physical Pixel checks
 
 The user confirmed these incremental checks on the Pixel 6a using the development APK with SHA-256 `cb8265b105e4c1c0a5441eac26abfe52ea7585827627aa16910fa774f7f0d359`:

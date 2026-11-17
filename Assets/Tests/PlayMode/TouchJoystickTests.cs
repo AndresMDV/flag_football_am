@@ -84,6 +84,80 @@ namespace FlagFootball.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator PublicReset_StopsHeldMovementAndRequiresFreshTouch()
+        {
+            var start = player.transform.position;
+            var handle = GameObject.Find("JoystickHandle").GetComponent<RectTransform>();
+            yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
+            Assert.That(player.transform.position.x, Is.GreaterThan(start.x));
+            Assert.That(handle.anchoredPosition.sqrMagnitude, Is.GreaterThan(0f));
+            var stopped = player.transform.position;
+            Assert.That(Mathf.Abs(stopped.x), Is.LessThan(1f)); // Interior: no clamp can conceal stale input.
+            Assert.That(Mathf.Abs(stopped.z), Is.LessThan(1f));
+
+            joystick.ResetInput();
+            Assert.That(handle.anchoredPosition, Is.EqualTo(Vector2.zero)); // Synchronous visual neutralization.
+            yield return null; // The device may still hold the original Began state.
+            AssertStopped(stopped);
+            yield return Touch(1, TouchPhase.Moved, Vector2.up);
+            for (var frame = 0; frame < 3; frame++)
+            {
+                yield return null;
+                AssertStopped(stopped);
+                Assert.That(handle.anchoredPosition, Is.EqualTo(Vector2.zero));
+            }
+            yield return Touch(1, TouchPhase.Ended, Vector2.up);
+            AssertStopped(stopped);
+            yield return null;
+            AssertStopped(stopped);
+
+            yield return Touch(1, TouchPhase.Began, Vector2.left * 0.5f);
+            Assert.That(player.transform.position.x, Is.LessThan(stopped.x));
+            Assert.That(handle.anchoredPosition.sqrMagnitude, Is.GreaterThan(0f));
+            stopped = player.transform.position;
+            yield return Touch(1, TouchPhase.Ended, Vector2.left * 0.5f);
+            AssertStopped(stopped);
+        }
+
+        [UnityTest]
+        public IEnumerator PublicReset_RepeatedAndDisabledResetsDoNotReviveHeldTouch()
+        {
+            joystick.ResetInput();
+            joystick.ResetInput();
+            var start = player.transform.position;
+            yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
+            Assert.That(player.transform.position.x, Is.GreaterThan(start.x));
+            var stopped = player.transform.position;
+            Assert.That(Mathf.Abs(stopped.x), Is.LessThan(1f));
+            Assert.That(Mathf.Abs(stopped.z), Is.LessThan(1f));
+
+            joystick.ResetInput();
+            joystick.ResetInput();
+            joystick.enabled = false;
+            joystick.ResetInput();
+            joystick.ResetInput();
+            yield return Touch(1, TouchPhase.Moved, Vector2.up);
+            AssertStopped(stopped);
+            joystick.enabled = true;
+            yield return null;
+            AssertStopped(stopped);
+            yield return Touch(1, TouchPhase.Moved, Vector2.left);
+            AssertStopped(stopped);
+            yield return Touch(1, TouchPhase.Ended, Vector2.left);
+            AssertStopped(stopped);
+            joystick.ResetInput();
+            joystick.ResetInput();
+            yield return null;
+            AssertStopped(stopped);
+
+            yield return Touch(1, TouchPhase.Began, Vector2.up * 0.5f);
+            Assert.That(player.transform.position.z, Is.GreaterThan(stopped.z));
+            stopped = player.transform.position;
+            yield return Touch(1, TouchPhase.Ended, Vector2.up * 0.5f);
+            AssertStopped(stopped);
+        }
+
+        [UnityTest]
         public IEnumerator OtherFinger_CannotStealOrAutomaticallyInheritTheGesture()
         {
             yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);

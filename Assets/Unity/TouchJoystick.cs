@@ -109,7 +109,12 @@ namespace FlagFootball.Unity
             ResetInput();
         }
 
-        private void ResetInput()
+        /// <summary>
+        /// Cancels the captured gesture and immediately clears movement input and the handle.
+        /// Only a new Began touch starting after this call can capture the pad.
+        /// Safe to call repeatedly or while disabled; does not enable controls or change player pose.
+        /// </summary>
+        public void ResetInput()
         {
             gesture?.Cancel();
             // Existing touches retain their original start time, including after re-enabling EnhancedTouch.
