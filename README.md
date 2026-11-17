@@ -1,6 +1,6 @@
 # Flag Football Android Prototype
 
-A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap starts with an explicitly bound QB, a stationary receiver and a visible QB-held ball, with movement blocked until Start. Visible Start/Restart touch controls and public actions drive repeatable attempts; a bottom-left joystick and bounded running camera support active QB movement. This candidate has automated integration evidence, not new physical-device validation.
+A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap starts with an explicitly bound QB, a stationary receiver and a visible QB-held ball, with movement blocked until Start. Visible Start/Restart touch controls and public actions drive repeatable attempts; a bottom-left joystick and bounded running camera support active QB movement. Automated integration checks and the scoped, user-confirmed Pixel checks below cover this increment.
 
 ## Run the checks
 
@@ -149,9 +149,24 @@ Disabled, paused or unfocused controls accept no actions; return/re-enable inval
 
 Verification: `python3 scripts/run_unity_tests.py --platform PlayMode --test-filter 'TouchJoystickTests.Actions_'` exercises `Actions_StartRestartRestoreAndRequireFreshMovement`, `Actions_ResetRejectsPendingSameFrameAndOutsideGestures`, `Actions_InterruptionsNeutralizePendingGesturesAndExternalState` and `Actions_LayoutIsReadableDisjointAndSafeAcrossLandscapeAspects`. These use actual virtual Touchscreen event dispatch, not direct UI listener calls. The full EditMode/PlayMode suites retain all 59 previous named cases alongside these four additions. `PreparedActors_OwnerOnlyDestructionKeepsCameraUpdating` also verifies complete touch-UI teardown.
 
-Manual scenario still unverified on this candidate: confirm label/target readability and cutout clearance in both landscape orientations; hold joystick and Start fingers, press Restart with another finger, move/lift old fingers, and verify only fresh Start plus fresh joystick resumes QB movement. Repeat after app return. Automated virtual input does not prove physical touch, Android/IL2CPP behavior, lock/unlock, accessibility, FPS or thermal performance; historical APK evidence remains separately scoped below.
+The scoped physical results below cover six user-confirmed scenarios on this candidate. Lock/unlock and app return were not accepted in this round. Automated virtual input alone does not establish physical usability, accessibility, FPS or thermal performance; historical APK evidence remains separately scoped.
 
 Rollback only the final control delivery against its saved pre-unit snapshot: remove `AttemptControls.cs` with its Unity-generated metadata, restore only its Bootstrap/joystick ownership wiring, added action tests/teardown assertions, PlayMode uGUI test reference and this documentation. Preserve the previous lifecycle/input/actor/camera implementations and all 59 prior cases; do not restore from HEAD.
+
+### Issue #14 physical acceptance
+
+The user confirmed all six checks on a Pixel 6a, Android API 36, using the installed ARM64/IL2CPP/OpenGL ES 3 development APK with SHA-256 `8e532743a4ed9ea7f3bec29777062800aecaf29a51ed17e57d9f889a1a597e8d`.
+
+| Scenario | User-confirmed result |
+| --- | --- |
+| Active joystick movement | QB moves; receiver stays stationary |
+| Restart an active attempt | Both initial poses and QB possession restored; new Start required |
+| Hold joystick through Restart and Start | No movement until the old finger lifts and a fresh gesture begins |
+| Hold Start, press Restart with another finger, release old Start | Remains in Preparation; old release cannot activate |
+| Restart twice, then fresh Start and joystick | Normal movement without unexpected pose/state changes |
+| Both landscape orientations | Controls fully visible, disjoint and responsive |
+
+Existing final automated evidence is **33/33 EditMode + 30/30 PlayMode**, with zero failures; documentation-only delivery does not rerun these suites. Physical results are user reports, not automated device input, cold-start proof, exhaustive interruption/accessibility coverage or performance/thermal measurements. Routes (#15), passing-camera framing (#16) and the remaining #13/#1 lab/product scope are not completed here.
 
 ### Physical Pixel checks
 
@@ -226,7 +241,7 @@ See the [integration evidence report](docs/movement-verification.md) for exact s
 
 ## Build and launch the Android prototype
 
-The current scene waits in Preparation with Start/Restart touch controls. The commands below remain build infrastructure: this candidate has not been built, installed or physically verified. Historical device evidence applies only to its named APK.
+The current scene waits in Preparation with Start/Restart touch controls. This candidate was built, installed and checked in the scoped issue #14 physical acceptance round above. The commands below remain build infrastructure; each historical device report applies only to its named APK.
 
 From the repository root, with the Editor closed:
 
