@@ -28,9 +28,12 @@ namespace FlagFootball.Unity
                 return;
             }
             view = GetComponent<Camera>();
-            visuals = target.GetComponentsInChildren<Renderer>();
+            RefreshSubjectVisuals();
             fixedRotation = Quaternion.Euler(pitch, 0f, 0f);
         }
+
+        // Bootstrap adds the held ball after Awake; refresh once after that composition.
+        internal void RefreshSubjectVisuals() => visuals = target.GetComponentsInChildren<Renderer>();
 
         private void Start()
         {
@@ -89,6 +92,7 @@ namespace FlagFootball.Unity
             var slope = Planar(forward) / -forward.y;
             foreach (var visual in visuals)
             {
+                if (!visual) continue;
                 var bounds = visual.bounds;
                 // Project the entire renderer AABB onto the ground along the orthographic view rays.
                 var center = Planar(bounds.center) + slope * (bounds.center.y - groundY);

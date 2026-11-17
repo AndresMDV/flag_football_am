@@ -1,6 +1,6 @@
 # Flag Football Android Prototype
 
-A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap now starts with one prepared QB, movement blocked until public Start. A fixed bottom-left joystick and bounded, fixed-orientation running camera support active movement. This intermediate API-driven lab has no receiver, ball or usable start/restart buttons yet. It is runnable through the public API and automated harness, not ready for physical gameplay validation.
+A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap starts with an explicitly bound QB, a stationary receiver and a visible QB-held ball, with movement blocked until public Start. A fixed bottom-left joystick and bounded, fixed-orientation running camera support active QB movement. This intermediate lab has no usable Start/Restart buttons yet: activation requires the public API or automated harness, not physical gameplay validation.
 
 ## Run the checks
 
@@ -93,27 +93,47 @@ Verification through actual virtual `Touchscreen` event dispatch:
 
 `python3 scripts/run_unity_tests.py --platform PlayMode --test-filter 'TouchJoystickTests.PublicReset_'` passed **2/2**. Before exposure, the same command failed compilation with CS1061 (no accessible `ResetInput`), runner exit 1 and no XML. After exposure, `python3 scripts/run_unity_tests.py` passed **30 EditMode + 19 PlayMode**, zero failures/skips, Editor exits 0. Ignored XML/log artifacts are under `TestResults/20261117T020328819680Z` (focused) and `TestResults/20261117T020410209579Z` (full); the RED log is under `TestResults/20261117T020259526024Z`.
 
-These are headless input simulations, not new physical touch, Android, rendered-visual or lock/unlock evidence. This is the input foundation for [#14](https://github.com/AndresMDV/flag_football_am/issues/14); the single-QB lifecycle below builds on it. Receiver/ball ownership and usable start/restart controls remain unimplemented. Existing physical evidence below applies only to its named APK.
+These are headless input simulations, not new physical touch, Android, rendered-visual or lock/unlock evidence. This is the input foundation for [#14](https://github.com/AndresMDV/flag_football_am/issues/14); the prepared lifecycle below builds on it. Receiver/held-ball preparation is now included; usable Start/Restart controls remain unimplemented. Existing physical evidence below applies only to its named APK.
 
 Rollback this unit independently by restoring `ResetInput` to private, removing its new API comment and the two `PublicReset_` tests, and removing this subsection. No scene, metadata, core, movement or startup changes need reverting.
 
-### Prepared single-QB attempts (#14 intermediate delivery)
+### Prepared attempts (#14 intermediate deliveries)
 
 `SceneBootstrap.Quarterback` explicitly references the existing orange `Placeholder`; runtime role selection never scans for an actor. The pinned Editor action `ProjectSetup.ConfigureAttemptQuarterback` saved this binding without regenerating baseline assets. The initial world position `(0, 0.5, 0)` and identity rotation are captured once in `Awake`, before movement, not recaptured on restart.
 
 After `IsInitialized` becomes true in `Start`, an automated harness or future action adapter can call the public synchronous actions:
 
 - `StartAttempt()` returns true only for Preparation → Active. It clears joystick ownership/freshness before allowing movement. Duplicate Active Start returns false without disturbing a held gesture.
-- `RestartAttempt()` returns true on successful completion, including while already prepared. It closes the movement gate, publishes Preparation and cancels the joystick before invoking `Resetting` subscribers in registration order, then restores the original QB pose. Start and nested Restart are rejected during callbacks. A new explicit Start and a new `Began` gesture are required afterward.
+- `RestartAttempt()` returns true on successful completion, including while already prepared. It closes the movement gate, publishes Preparation and cancels the joystick before invoking `Resetting` subscribers in registration order, then restores both original actor poses and QB possession. Start and nested Restart are rejected during callbacks. A new explicit Start and a new `Began` gesture are required afterward.
 - `Resetting` is the small integration boundary for future route/charge/flight/control/camera adapters, not implementations of them. Subscribers must reset synchronously/idempotently and unsubscribe when disposed. Exceptions propagate immediately (later callbacks are skipped); pose restoration and reentrancy cleanup still run, and Start stays blocked until a successful Restart retry.
 
 The engine-free `AttemptLifecycle.State` exposes Preparation/Active; its action booleans report whether state changed. The scene's Restart boolean instead reports transaction completion. Preparation rejects both touch and direct movement requests; disabling/re-enabling movement cannot bypass it. Focus/pause still neutralize input only: interruption-to-attempt reset belongs to #21.
 
 Focused verification: `AttemptLifecycleTests` exercises public transitions; `TouchJoystickTests.Attempt_` exercises actual scene preparation, fresh Start, duplicate Start, reset ordering/reentrancy/failure, pose restoration and stale held/moved/released touch rejection. Existing movement/touch/camera fixtures explicitly resolve the QB and Start when needed; complete renderer-edge framing assertions remain. These are headless virtual-touch checks, not physical touch, usability, Android-player or lock/unlock evidence. Historical APK evidence below is unchanged.
 
-Full regression: `python3 scripts/run_unity_tests.py --platform EditMode` passed **33/33** and `--platform PlayMode` passed **23/23**, retaining all 49 earlier cases plus seven new cases, zero failures/skips and Editor exits 0. Reports: ignored `TestResults/20261117T023723664570Z/EditMode.xml` and `TestResults/20261117T023733818599Z/PlayMode.xml`.
+Earlier single-QB delivery regression: `python3 scripts/run_unity_tests.py --platform EditMode` passed **33/33** and `--platform PlayMode` passed **23/23**, retaining all 49 earlier cases plus seven new cases, zero failures/skips and Editor exits 0. Reports: ignored `TestResults/20261117T023723664570Z/EditMode.xml` and `TestResults/20261117T023733818599Z/PlayMode.xml`.
 
-Receiver/held-ball preparation is the next unit, usable action UI the final unit; routes, flight, charge, catch and sibling behavior are absent. Roll back only this unit's lifecycle, bootstrap/gate/binding, new tests and fixture/doc migrations against its pre-unit snapshot; preserve the public joystick reset and both `PublicReset_` tests from the earlier foundation.
+The earlier lifecycle unit can be rolled back separately after removing dependent receiver/ball preparation: restore its bootstrap/gate/binding, lifecycle, tests and docs against its pre-unit snapshot; preserve the public joystick reset and both `PublicReset_` tests.
+
+#### Receiver and held-ball preparation
+
+`SceneBootstrap` owns two runtime primitives and their cloned URP materials. Public `Receiver` and `Ball` expose the returned transforms; roles never depend on a first-actor search. `BallOwner` reports the explicitly bound QB transform only while the ball is directly parented to it, otherwise null. This is an attachment observation, not a transfer/flight/catch API.
+
+| Visual | Initial pose and appearance |
+| --- | --- |
+| QB | Existing orange `Placeholder`; world `(0, 0.5, 0)`, identity rotation, scale `(0.6, 1, 1)` |
+| Receiver | Blue cube named `Receiver`; world `(1.5, 0.5, 1)`, identity rotation, scale `(0.6, 1, 1)` |
+| Ball | Brown ellipsoid named `Ball`; QB-local position `(0.8, 0.1, 0.2)`, identity local rotation; world size `(0.22, 0.18, 0.36)` at the initial pose, local scale approximately `(0.366667, 0.18, 0.36)` compensating QB scale |
+
+The receiver has no movement/input adapter. Neither added visual has a collider or rigidbody. Preparation keeps both actors still under joystick input; Active moves only the QB and its attached ball. The initial poses and ball parent-relative pose/scale are captured once. Every Restart, including repeated prepared resets and callback failures, restores them in the existing `finally` block; detached/mutated balls are reattached. Callback ordering, blocked reentrancy and fail-closed retry behavior are unchanged.
+
+After composition, Bootstrap explicitly refreshes the running camera's cached QB-child renderers so the ball participates in existing full-renderer edge framing. The nearby receiver is initially framed at 16:9, 20:9 and 2.5 aspect. Keeping the receiver visible throughout unrestricted QB movement is not promised; passing-camera behavior belongs to #16. Renderer-corner projection checks establish geometric containment, not rendered pixels or physical readability.
+
+Scene-owner destruction releases both primitives (even a detached ball) and their materials. The surviving running camera skips destroyed cached visuals and keeps framing the QB; `PreparedActors_OwnerOnlyDestructionKeepsCameraUpdating` verifies owner-only cleanup across subsequent camera frames. Repeated Restart reuses the same objects. `BootstrapSceneTests.PreparedActors_ExposeDistinctRolesHeldBallAndInitialFraming` and `PreparedActors_RepeatedSceneUnloadDestroysOwnedVisualsAndMaterials` cover roles, initial geometry and repeated scene/reset cleanup. Existing `TouchJoystickTests.Attempt_` cases also disturb both actor poses and ball attachment/local pose/scale, verify reset/failure recovery and exercise fresh virtual touch with a stationary receiver.
+
+Actor-composition full regression: `python3 scripts/run_unity_tests.py --platform EditMode` passed **33/33** and `--platform PlayMode` passed **25/25**, zero failures/skips, Editor exits 0. All 56 previous case fullnames remain passing; both new actor checks pass. Ignored reports: `TestResults/20261117T125003194727Z/EditMode.xml` and `TestResults/20261117T125016992114Z/PlayMode.xml`. These are automated scene/virtual-touch checks, not new Android or physical-device evidence.
+
+Usable Start/Restart UI remains the final delivery. Routes, charge, flight, catch, control transfer, passing camera and interruption-to-attempt policy remain absent. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
 
 ### Physical Pixel checks
 
@@ -150,7 +170,7 @@ The orthographic running view follows in `LateUpdate` after player movement. Pit
 
 The original 10 × 10 field and 0.75 movement inset were retuned to give the running view room to translate and to contain the projection of the elevated body/marker. The 2-unit inset is conservative camera clearance, not the character's physical radius or final match out-of-bounds policy. Read-only `PlayerMovement.MinimumPosition`/`MaximumPosition` expose the configured center limits.
 
-`RunningCamera` projects all viewport corners and each actor renderer's full AABB onto the flat, axis-aligned ground. It intersects the camera-position intervals that keep the entire viewport on the field and the entire actor inside the inner frame. `BoundedCameraFollow` applies exponential smoothing, then clamps to that intersection. Bounds and visibility win over smoothing during abrupt relocation or clipping risk; the character may be off-center near edges. The view shrinks if needed to fit the field at a changed aspect ratio. Impossible framing is rejected explicitly: tune view size/margin/pitch together with movement inset rather than hiding outside areas.
+`RunningCamera` projects all viewport corners and each QB-child renderer's full AABB onto the flat, axis-aligned ground. It intersects the camera-position intervals that keep the entire viewport on the field and the entire actor inside the inner frame. `BoundedCameraFollow` applies exponential smoothing, then clamps to that intersection. Bounds and visibility win over smoothing during abrupt relocation or clipping risk; the character may be off-center near edges. The view shrinks if needed to fit the field at a changed aspect ratio. Impossible framing is rejected explicitly: tune view size/margin/pitch together with movement inset rather than hiding outside areas.
 
 Edit serialized camera values before Play mode; keep the field flat and world-axis aligned and retain feasible framing. `ProjectSetup.ConfigureRunningCamera` wires the scene through Editor APIs and restores the initial field dimensions/inset and camera preview. The subtle runtime grid makes camera translation observable without final art; its owned material/texture are destroyed with the bootstrap.
 
@@ -182,7 +202,7 @@ Rollback boundary for #11: remove the camera core/adapter/tests and metadata, th
 
 ## Integrated verification (#12)
 
-The complete runner passes **47 tests**, including two cross-boundary touch → movement → camera checks in `TouchJoystickTests`: `IntegratedTouch_MovesFacesAndDrivesCameraThroughTurnAndRelease` and `IntegratedTouch_BoundsFramingAndFreshInputSurviveInterruption`. The new development APK was built, installed and hash-verified on the Pixel without changing production control/camera values.
+The #12 integration delivery passed **47 tests**, including two cross-boundary touch → movement → camera checks in `TouchJoystickTests`: `IntegratedTouch_MovesFacesAndDrivesCameraThroughTurnAndRelease` and `IntegratedTouch_BoundsFramingAndFreshInputSurviveInterruption`. The new development APK was built, installed and hash-verified on the Pixel without changing production control/camera values.
 
 See the [integration evidence report](docs/movement-verification.md) for exact source/build identity, named results, calibration values and the parent acceptance matrix. The user confirmed the matching-build touch, automatic-facing, perimeter/four-corner, camera-visibility and lock/app-return checks, and accepted the current control/camera values without further tuning. Earlier APK observations remain separate. Delivery and issue status are tracked on GitHub.
 

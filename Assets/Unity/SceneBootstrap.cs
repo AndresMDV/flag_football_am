@@ -19,10 +19,18 @@ namespace FlagFootball.Unity
         private TouchJoystick joystick;
         private Vector3 initialPosition;
         private Quaternion initialRotation;
+        private Transform receiver, ball;
+        private Material receiverMaterial, ballMaterial;
+        private Vector3 initialReceiverPosition, heldPosition, heldScale;
+        private Quaternion initialReceiverRotation, heldRotation;
         private bool resetting, resetFailed;
 
         public bool IsInitialized { get; private set; }
         public PlayerMovement Quarterback => quarterback;
+        public Transform Receiver => receiver;
+        public Transform Ball => ball;
+        // Possession observes direct QB attachment; detached visuals have no owner.
+        public Transform BallOwner => ball && ball.parent == quarterback.transform ? quarterback.transform : null;
         public bool IsActive => lifecycle.State == AttemptState.Active;
         // Synchronous, registration-ordered, fail-fast callbacks while prepared and movement-blocked.
         public event Action Resetting;
@@ -44,6 +52,8 @@ namespace FlagFootball.Unity
         {
             joystick = TouchJoystick.Create(quarterback, joystickDiameter, joystickPadding, joystickSensitivity);
             AddFieldGrid();
+            CreatePreparedActors();
+            Camera.main.GetComponent<RunningCamera>().RefreshSubjectVisuals();
             IsInitialized = true;
             Debug.Log("BASELINE_SCENE_READY");
         }
@@ -59,7 +69,7 @@ namespace FlagFootball.Unity
         }
 
         // True on completion, even when already prepared. Failures propagate and latch Start closed
-        // until a successful retry; finally still restores the original QB pose and clears reentrancy.
+        // until a successful retry; finally restores both poses/possession and clears reentrancy.
         public bool RestartAttempt()
         {
             if (!IsInitialized || resetting) return false;
@@ -75,9 +85,47 @@ namespace FlagFootball.Unity
             finally
             {
                 quarterback.transform.SetPositionAndRotation(initialPosition, initialRotation);
+                receiver.SetPositionAndRotation(initialReceiverPosition, initialReceiverRotation);
+                ball.SetParent(quarterback.transform, false);
+                ball.localPosition = heldPosition;
+                ball.localRotation = heldRotation;
+                ball.localScale = heldScale;
                 resetting = false;
             }
             return true;
+        }
+
+        private void CreatePreparedActors()
+        {
+            receiver = CreateVisual("Receiver", PrimitiveType.Cube,
+                new Color(0.1f, 0.55f, 0.9f), out receiverMaterial);
+            receiver.SetParent(transform, false);
+            receiver.SetPositionAndRotation(new Vector3(1.5f, 0.5f, 1f), Quaternion.identity);
+            receiver.localScale = new Vector3(0.6f, 1f, 1f);
+            initialReceiverPosition = receiver.position;
+            initialReceiverRotation = receiver.rotation;
+
+            ball = CreateVisual("Ball", PrimitiveType.Sphere,
+                new Color(0.35f, 0.12f, 0.04f), out ballMaterial);
+            ball.SetParent(quarterback.transform, false);
+            ball.localPosition = new Vector3(0.8f, 0.1f, 0.2f);
+            ball.localRotation = Quaternion.identity;
+            var parentScale = quarterback.transform.lossyScale;
+            ball.localScale = new Vector3(0.22f / parentScale.x, 0.18f / parentScale.y, 0.36f / parentScale.z);
+            heldPosition = ball.localPosition;
+            heldRotation = ball.localRotation;
+            heldScale = ball.localScale;
+        }
+
+        private Transform CreateVisual(string role, PrimitiveType shape, Color color, out Material material)
+        {
+            var visual = GameObject.CreatePrimitive(shape);
+            visual.name = role;
+            Destroy(visual.GetComponent<Collider>());
+            material = new Material(quarterback.GetComponent<Renderer>().sharedMaterial) { name = role + "Material" };
+            material.SetColor("_BaseColor", color);
+            visual.GetComponent<Renderer>().sharedMaterial = material;
+            return visual.transform;
         }
 
         private void AddFieldGrid()
@@ -102,6 +150,10 @@ namespace FlagFootball.Unity
 
         private void OnDestroy()
         {
+            if (receiver) Destroy(receiver.gameObject);
+            if (ball) Destroy(ball.gameObject);
+            if (receiverMaterial) Destroy(receiverMaterial);
+            if (ballMaterial) Destroy(ballMaterial);
             if (ground) ground.sharedMaterial = originalGroundMaterial;
             if (gridMaterial) Destroy(gridMaterial);
             if (gridTexture) Destroy(gridTexture);

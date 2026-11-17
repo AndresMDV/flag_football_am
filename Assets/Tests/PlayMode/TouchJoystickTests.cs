@@ -17,6 +17,9 @@ namespace FlagFootball.Tests.PlayMode
         private PlayerMovement player;
         private TouchJoystick joystick;
         private RectTransform pad;
+        private Transform receiver, ball;
+        private Vector3 receiverPosition, ballPosition, ballScale;
+        private Quaternion receiverRotation, ballRotation;
         private InputSettings.EditorInputBehaviorInPlayMode editorInput;
         private InputSettings.BackgroundBehavior backgroundInput;
         private float previousCaptureDelta;
@@ -36,6 +39,13 @@ namespace FlagFootball.Tests.PlayMode
             yield return null;
             attempt = Object.FindFirstObjectByType<SceneBootstrap>();
             player = attempt.Quarterback;
+            receiver = attempt.Receiver;
+            ball = attempt.Ball;
+            receiverPosition = receiver.position;
+            receiverRotation = receiver.rotation;
+            ballPosition = ball.localPosition;
+            ballRotation = ball.localRotation;
+            ballScale = ball.localScale;
             Assert.That(attempt.IsActive, Is.False);
             Assert.That(player.MovementAllowed, Is.False);
             joystick = Object.FindFirstObjectByType<TouchJoystick>();
@@ -61,6 +71,28 @@ namespace FlagFootball.Tests.PlayMode
         private void AssertStopped(Vector3 position) =>
             Assert.That(Vector3.Distance(player.transform.position, position), Is.LessThan(0.0001f));
 
+        private void AssertPreparedActors()
+        {
+            Assert.That(receiver.position, Is.EqualTo(receiverPosition));
+            Assert.That(receiver.rotation, Is.EqualTo(receiverRotation));
+            Assert.That(attempt.BallOwner, Is.EqualTo(player.transform));
+            Assert.That(ball.parent, Is.EqualTo(player.transform));
+            Assert.That(ball.localPosition, Is.EqualTo(ballPosition));
+            Assert.That(ball.localRotation, Is.EqualTo(ballRotation));
+            Assert.That(ball.localScale, Is.EqualTo(ballScale));
+            Assert.That(Vector3.Distance(ball.position, player.transform.TransformPoint(ballPosition)),
+                Is.LessThan(0.0001f));
+        }
+
+        private void DisturbPreparedActors()
+        {
+            receiver.SetPositionAndRotation(new Vector3(-2f, 1f, -1f), Quaternion.Euler(15f, 70f, 5f));
+            ball.SetParent(null);
+            ball.SetPositionAndRotation(new Vector3(3f, 2f, -1f), Quaternion.Euler(35f, 15f, 90f));
+            ball.localScale = Vector3.one * 2f;
+            Assert.That(attempt.BallOwner, Is.Null, "A detached ball is not QB-held.");
+        }
+
         [UnityTest]
         public IEnumerator Attempt_PreparationRejectsDirectAndHeldTouchUntilFreshStart()
         {
@@ -79,6 +111,8 @@ namespace FlagFootball.Tests.PlayMode
             joystick.enabled = true;
             yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
             AssertStopped(initial);
+            AssertPreparedActors();
+            var initialBall = ball.position;
             player.enabled = false;
             player.SetMoveInput(Vector2.right);
             Assert.That(attempt.StartAttempt(), Is.True);
@@ -95,6 +129,8 @@ namespace FlagFootball.Tests.PlayMode
             Assert.That(attempt.StartAttempt(), Is.False);
             yield return null;
             Assert.That(player.transform.position.x, Is.GreaterThan(moving.x));
+            Assert.That(ball.position, Is.Not.EqualTo(initialBall));
+            AssertPreparedActors(); // Active fresh touch moves only the QB and its held ball.
         }
 
         [UnityTest]
@@ -112,20 +148,26 @@ namespace FlagFootball.Tests.PlayMode
                 Assert.That(GameObject.Find("JoystickHandle").GetComponent<RectTransform>().anchoredPosition,
                     Is.EqualTo(Vector2.zero));
                 Assert.That(player.transform.position, Is.Not.EqualTo(initial));
+                Assert.That(receiver.position, Is.Not.EqualTo(receiverPosition));
+                Assert.That(attempt.BallOwner, Is.Null); // Callbacks precede all pose/possession restoration.
                 Assert.That(attempt.StartAttempt(), Is.False);
                 Assert.That(attempt.RestartAttempt(), Is.False);
                 player.SetMoveInput(Vector2.up);
             };
             yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
             player.transform.SetPositionAndRotation(new Vector3(1f, initial.y, 1f), Quaternion.Euler(0f, 90f, 0f));
+            DisturbPreparedActors();
             Assert.That(attempt.RestartAttempt(), Is.True);
             AssertStopped(initial);
+            AssertPreparedActors();
             Assert.That(player.transform.rotation, Is.EqualTo(rotation));
             player.transform.SetPositionAndRotation(new Vector3(-1f, initial.y, -1f), Quaternion.Euler(0f, 180f, 0f));
+            DisturbPreparedActors();
             Assert.That(attempt.RestartAttempt(), Is.True); // Prepared restart still repairs disturbance.
             AssertStopped(initial);
             Assert.That(player.transform.rotation, Is.EqualTo(rotation));
             Assert.That(callbacks, Is.EqualTo(2));
+            AssertPreparedActors();
             Assert.That(attempt.IsActive, Is.False);
             Assert.That(attempt.StartAttempt(), Is.True);
             yield return null;
@@ -136,6 +178,7 @@ namespace FlagFootball.Tests.PlayMode
             AssertStopped(initial);
             yield return Touch(1, TouchPhase.Began, Vector2.left * 0.5f);
             Assert.That(player.transform.position.x, Is.LessThan(initial.x));
+            AssertPreparedActors();
         }
 
         [UnityTest]
@@ -147,19 +190,25 @@ namespace FlagFootball.Tests.PlayMode
             System.Action failure = () => throw new System.InvalidOperationException("reset failure");
             attempt.Resetting += failure;
             player.transform.SetPositionAndRotation(new Vector3(1f, initial.y, 1f), Quaternion.Euler(0f, 90f, 0f));
+            DisturbPreparedActors();
             Assert.Throws<System.InvalidOperationException>(() => attempt.RestartAttempt());
             AssertStopped(initial);
+            AssertPreparedActors();
             Assert.That(player.transform.rotation, Is.EqualTo(rotation));
             Assert.That(attempt.IsActive, Is.False);
             Assert.That(player.MovementAllowed, Is.False);
             Assert.That(attempt.StartAttempt(), Is.False);
+            DisturbPreparedActors();
             Assert.Throws<System.InvalidOperationException>(() => attempt.RestartAttempt());
+            AssertPreparedActors();
             Assert.That(attempt.StartAttempt(), Is.False);
             player.SetMoveInput(Vector2.right);
             yield return null;
             AssertStopped(initial);
             attempt.Resetting -= failure;
+            DisturbPreparedActors();
             Assert.That(attempt.RestartAttempt(), Is.True);
+            AssertPreparedActors();
             Assert.That(attempt.StartAttempt(), Is.True);
             yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
             Assert.That(player.transform.position.x, Is.GreaterThan(initial.x));
