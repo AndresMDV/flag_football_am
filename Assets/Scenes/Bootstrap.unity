@@ -682,6 +682,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d0262fd102a714266bf49c6ce9fdf426, type: 3}
   m_Name: 
   m_EditorClassIdentifier: FlagFootball.Unity::FlagFootball.Unity.SceneBootstrap
+  quarterback: {fileID: 748213320}
   joystickDiameter: 240
   joystickPadding: 64
   joystickSensitivity: 1

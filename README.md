@@ -1,6 +1,6 @@
 # Flag Football Android Prototype
 
-A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap includes one bounded, automatically facing placeholder controlled by a fixed bottom-left touch joystick. A bounded, fixed-orientation running camera follows the character.
+A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap now starts with one prepared QB, movement blocked until public Start. A fixed bottom-left joystick and bounded, fixed-orientation running camera support active movement. This intermediate API-driven lab has no receiver, ball or usable start/restart buttons yet. It is runnable through the public API and automated harness, not ready for physical gameplay validation.
 
 ## Run the checks
 
@@ -21,7 +21,7 @@ The runner uses Unity batch mode with Android as the active build target. It del
 
 | Path | Responsibility |
 | --- | --- |
-| `Assets/Core` | Pure C# movement, bounds, joystick gesture rules and constrained camera smoothing; engine references disabled. |
+| `Assets/Core` | Pure C# attempt lifecycle, movement, bounds, joystick gesture rules and constrained camera smoothing; engine references disabled. |
 | `Assets/Unity` | Scene initialization, movement/touch adapters, runtime visuals and camera projection/framing. May reference Core, never the reverse. |
 | `Assets/Editor` | One-time baseline asset/scene setup, plus the repeatable Android development build action. Setup refuses to overwrite existing baseline assets. |
 | `Assets/Tests/EditMode` | Movement behavior plus assembly identity and absence of Unity dependencies. |
@@ -32,7 +32,7 @@ Add this repository root as an existing project in Unity Hub and open it with th
 
 ## Bounded movement (#9)
 
-`PlayerMovement.SetMoveInput(Vector2)` accepts screen-right/up input. Magnitude maps linearly to speed, capped radially at 1 (including diagonals and over-range input). Zero stops on the next `Update`, without acceleration or momentum. The latest input persists until replaced. The touch joystick supplies this boundary and sends zero on release/cancellation or app interruption; no keyboard driver is installed.
+`PlayerMovement.SetMoveInput(Vector2)` accepts screen-right/up input when `MovementAllowed`; blocked requests are discarded, including while the component is disabled. Magnitude maps linearly to speed, capped radially at 1 (including diagonals and over-range input). Zero stops on the next `Update`, without acceleration or momentum. The latest input persists until replaced. The touch joystick supplies this boundary and sends zero on release/cancellation or app interruption; no keyboard driver is installed.
 
 | Internal setting | Initial value |
 | --- | --- |
@@ -82,9 +82,9 @@ Tests temporarily route input to the headless game and ignore actual Editor focu
 
 ### Public fresh-input reset (#14 foundation)
 
-A future attempt owner can call `TouchJoystick.ResetInput()` on its joystick reference. The call cancels gesture ownership, immediately clears the player's movement request and centers the handle, then accepts only a new `Began` touch whose start time is strictly after the reset. Existing held touches, their subsequent moves and their release cannot resume movement. Repeated calls, including while disabled, are safe; re-enabling does not revive the held gesture.
+The scene attempt owner calls `TouchJoystick.ResetInput()` on its joystick reference. The call cancels gesture ownership, immediately clears the player's movement request and centers the handle, then accepts only a new `Began` touch whose start time is strictly after the reset. Existing held touches, their subsequent moves and their release cannot resume movement. Repeated calls, including while disabled, are safe; re-enabling does not revive the held gesture.
 
-This action does not enable/disable controls, freeze movement, reposition the player or create an attempt lifecycle. Standalone startup remains immediately playable. The joystick still supplies input before movement updates; focus, pause and disable handling use the same reset. The caller owns when to reset, while the joystick owns gesture cancellation and freshness.
+This action alone does not enable/disable controls, freeze movement, reposition the player or create an attempt lifecycle. Unmanaged movement components still default to allowed; Bootstrap now owns preparation gating. The joystick still supplies input before movement updates; focus, pause and disable handling use the same reset. The caller owns when to reset, while the joystick owns gesture cancellation and freshness.
 
 Verification through actual virtual `Touchscreen` event dispatch:
 
@@ -93,9 +93,27 @@ Verification through actual virtual `Touchscreen` event dispatch:
 
 `python3 scripts/run_unity_tests.py --platform PlayMode --test-filter 'TouchJoystickTests.PublicReset_'` passed **2/2**. Before exposure, the same command failed compilation with CS1061 (no accessible `ResetInput`), runner exit 1 and no XML. After exposure, `python3 scripts/run_unity_tests.py` passed **30 EditMode + 19 PlayMode**, zero failures/skips, Editor exits 0. Ignored XML/log artifacts are under `TestResults/20261117T020328819680Z` (focused) and `TestResults/20261117T020410209579Z` (full); the RED log is under `TestResults/20261117T020259526024Z`.
 
-These are headless input simulations, not new physical touch, Android, rendered-visual or lock/unlock evidence. This is only the first foundation for [#14](https://github.com/AndresMDV/flag_football_am/issues/14): prepared QB/receiver/ball ownership, attempt lifecycle, movement gating, start/restart controls and their integration remain unimplemented. Existing physical evidence below applies only to its named APK.
+These are headless input simulations, not new physical touch, Android, rendered-visual or lock/unlock evidence. This is the input foundation for [#14](https://github.com/AndresMDV/flag_football_am/issues/14); the single-QB lifecycle below builds on it. Receiver/ball ownership and usable start/restart controls remain unimplemented. Existing physical evidence below applies only to its named APK.
 
 Rollback this unit independently by restoring `ResetInput` to private, removing its new API comment and the two `PublicReset_` tests, and removing this subsection. No scene, metadata, core, movement or startup changes need reverting.
+
+### Prepared single-QB attempts (#14 intermediate delivery)
+
+`SceneBootstrap.Quarterback` explicitly references the existing orange `Placeholder`; runtime role selection never scans for an actor. The pinned Editor action `ProjectSetup.ConfigureAttemptQuarterback` saved this binding without regenerating baseline assets. The initial world position `(0, 0.5, 0)` and identity rotation are captured once in `Awake`, before movement, not recaptured on restart.
+
+After `IsInitialized` becomes true in `Start`, an automated harness or future action adapter can call the public synchronous actions:
+
+- `StartAttempt()` returns true only for Preparation → Active. It clears joystick ownership/freshness before allowing movement. Duplicate Active Start returns false without disturbing a held gesture.
+- `RestartAttempt()` returns true on successful completion, including while already prepared. It closes the movement gate, publishes Preparation and cancels the joystick before invoking `Resetting` subscribers in registration order, then restores the original QB pose. Start and nested Restart are rejected during callbacks. A new explicit Start and a new `Began` gesture are required afterward.
+- `Resetting` is the small integration boundary for future route/charge/flight/control/camera adapters, not implementations of them. Subscribers must reset synchronously/idempotently and unsubscribe when disposed. Exceptions propagate immediately (later callbacks are skipped); pose restoration and reentrancy cleanup still run, and Start stays blocked until a successful Restart retry.
+
+The engine-free `AttemptLifecycle.State` exposes Preparation/Active; its action booleans report whether state changed. The scene's Restart boolean instead reports transaction completion. Preparation rejects both touch and direct movement requests; disabling/re-enabling movement cannot bypass it. Focus/pause still neutralize input only: interruption-to-attempt reset belongs to #21.
+
+Focused verification: `AttemptLifecycleTests` exercises public transitions; `TouchJoystickTests.Attempt_` exercises actual scene preparation, fresh Start, duplicate Start, reset ordering/reentrancy/failure, pose restoration and stale held/moved/released touch rejection. Existing movement/touch/camera fixtures explicitly resolve the QB and Start when needed; complete renderer-edge framing assertions remain. These are headless virtual-touch checks, not physical touch, usability, Android-player or lock/unlock evidence. Historical APK evidence below is unchanged.
+
+Full regression: `python3 scripts/run_unity_tests.py --platform EditMode` passed **33/33** and `--platform PlayMode` passed **23/23**, retaining all 49 earlier cases plus seven new cases, zero failures/skips and Editor exits 0. Reports: ignored `TestResults/20261117T023723664570Z/EditMode.xml` and `TestResults/20261117T023733818599Z/PlayMode.xml`.
+
+Receiver/held-ball preparation is the next unit, usable action UI the final unit; routes, flight, charge, catch and sibling behavior are absent. Roll back only this unit's lifecycle, bootstrap/gate/binding, new tests and fixture/doc migrations against its pre-unit snapshot; preserve the public joystick reset and both `PublicReset_` tests from the earlier foundation.
 
 ### Physical Pixel checks
 
@@ -169,6 +187,8 @@ The complete runner passes **47 tests**, including two cross-boundary touch → 
 See the [integration evidence report](docs/movement-verification.md) for exact source/build identity, named results, calibration values and the parent acceptance matrix. The user confirmed the matching-build touch, automatic-facing, perimeter/four-corner, camera-visibility and lock/app-return checks, and accepted the current control/camera values without further tuning. Earlier APK observations remain separate. Delivery and issue status are tracked on GitHub.
 
 ## Build and launch the Android prototype
+
+The current scene waits in Preparation and has no usable Start/Restart UI; the commands below remain build infrastructure, not a claim that this intermediate candidate is physically playable. Historical device evidence applies only to its named APK.
 
 From the repository root, with the Editor closed:
 

@@ -24,7 +24,9 @@ namespace FlagFootball.Tests.PlayMode
             yield return null;
             Assert.That(Object.FindFirstObjectByType<RunningCamera>(), Is.Not.Null);
             Object.FindFirstObjectByType<TouchJoystick>().enabled = false;
-            player = Object.FindFirstObjectByType<PlayerMovement>();
+            var attempt = Object.FindFirstObjectByType<SceneBootstrap>();
+            player = attempt.Quarterback;
+            Assert.That(attempt.StartAttempt(), Is.True);
             view = Camera.main;
             field = GameObject.Find("Ground").GetComponent<Renderer>();
             visuals = player.GetComponentsInChildren<Renderer>();

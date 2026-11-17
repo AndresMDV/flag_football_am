@@ -15,11 +15,19 @@ namespace FlagFootball.Unity
         private BoundedMovement movement;
         private Vector2 moveInput;
 
+        public bool MovementAllowed { get; private set; } = true;
+
+        internal void SetMovementAllowed(bool allowed)
+        {
+            moveInput = Vector2.zero;
+            MovementAllowed = allowed;
+        }
+
         public Vector2 MinimumPosition => fieldMinimum + Vector2.one * footprintRadius;
         public Vector2 MaximumPosition => fieldMaximum - Vector2.one * footprintRadius;
 
         // Screen right/up, with radial magnitude controlling speed. Zero releases movement.
-        public void SetMoveInput(Vector2 input) => moveInput = input;
+        public void SetMoveInput(Vector2 input) => moveInput = MovementAllowed ? input : Vector2.zero;
 
         private void Awake()
         {
@@ -37,7 +45,7 @@ namespace FlagFootball.Unity
 
         private void Update()
         {
-            if (!movementView) { moveInput = Vector2.zero; return; }
+            if (!MovementAllowed || !movementView) { moveInput = Vector2.zero; return; }
             var forward = Vector3.ProjectOnPlane(movementView.transform.forward, Vector3.up);
             if (forward.sqrMagnitude < 0.0001f)
                 forward = Vector3.ProjectOnPlane(movementView.transform.up, Vector3.up);

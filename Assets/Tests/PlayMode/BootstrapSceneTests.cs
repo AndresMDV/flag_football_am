@@ -14,9 +14,11 @@ namespace FlagFootball.Tests.PlayMode
         public IEnumerator BootstrapScene_InitializesWithCameraAndUrp()
         {
             yield return SceneManager.LoadSceneAsync("Bootstrap", LoadSceneMode.Single);
+            yield return null;
             var bootstrap = Object.FindFirstObjectByType<SceneBootstrap>();
             Assert.That(bootstrap, Is.Not.Null);
-            Assert.That(bootstrap.IsInitialized, Is.True, "Awake must initialize the scene.");
+            Assert.That(bootstrap.IsInitialized, Is.True, "Start must finish scene composition.");
+            Assert.That(bootstrap.Quarterback.gameObject, Is.EqualTo(GameObject.Find("Placeholder")));
             Assert.That(Camera.main, Is.Not.Null);
             Assert.That(GameObject.Find("Placeholder"), Is.Not.Null);
             Assert.That(GraphicsSettings.defaultRenderPipeline, Is.Not.Null);

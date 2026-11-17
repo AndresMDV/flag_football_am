@@ -18,8 +18,27 @@ namespace FlagFootball.Tests.PlayMode
             yield return null;
             var joystick = Object.FindFirstObjectByType<TouchJoystick>();
             if (joystick) joystick.enabled = false;
-            player = Object.FindFirstObjectByType<PlayerMovement>();
+            var attempt = Object.FindFirstObjectByType<SceneBootstrap>();
+            player = attempt.Quarterback;
+            Assert.That(attempt.StartAttempt(), Is.True);
             Assert.That(player, Is.Not.Null, "Bootstrap must contain the movement adapter.");
+        }
+
+        [UnityTest]
+        public IEnumerator UnmanagedPlayer_DefaultMovementRemainsAllowed()
+        {
+            Object.FindFirstObjectByType<SceneBootstrap>().RestartAttempt();
+            var unmanaged = Object.Instantiate(player);
+            try
+            {
+                Assert.That(unmanaged.MovementAllowed, Is.True);
+                var initial = unmanaged.transform.position;
+                unmanaged.SetMoveInput(Vector2.right);
+                yield return null;
+                Assert.That(unmanaged.transform.position.x, Is.GreaterThan(initial.x));
+                Assert.That(player.transform.position, Is.EqualTo(initial));
+            }
+            finally { Object.Destroy(unmanaged.gameObject); }
         }
 
         [UnityTest]

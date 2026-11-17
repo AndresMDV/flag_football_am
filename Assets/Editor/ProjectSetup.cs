@@ -115,6 +115,18 @@ namespace FlagFootball.Editor
             Debug.Log("RUNNING_CAMERA_SCENE_READY");
         }
 
+        public static void ConfigureAttemptQuarterback()
+        {
+            var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+            var bootstrap = GameObject.Find("Bootstrap").GetComponent<SceneBootstrap>();
+            var settings = new SerializedObject(bootstrap);
+            settings.FindProperty("quarterback").objectReferenceValue =
+                GameObject.Find("Placeholder").GetComponent<PlayerMovement>();
+            settings.ApplyModifiedPropertiesWithoutUndo();
+            if (!EditorSceneManager.SaveScene(scene, ScenePath))
+                throw new InvalidOperationException("Failed to save the quarterback binding.");
+        }
+
         private static Material CreateMaterial(string name, Color color)
         {
             var shader = Shader.Find("Universal Render Pipeline/Lit");

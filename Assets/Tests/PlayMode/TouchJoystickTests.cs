@@ -12,6 +12,7 @@ namespace FlagFootball.Tests.PlayMode
 {
     public sealed class TouchJoystickTests
     {
+        private SceneBootstrap attempt;
         private Touchscreen screen;
         private PlayerMovement player;
         private TouchJoystick joystick;
@@ -33,7 +34,10 @@ namespace FlagFootball.Tests.PlayMode
             screen = InputSystem.AddDevice<Touchscreen>();
             yield return SceneManager.LoadSceneAsync("Bootstrap", LoadSceneMode.Single);
             yield return null;
-            player = Object.FindFirstObjectByType<PlayerMovement>();
+            attempt = Object.FindFirstObjectByType<SceneBootstrap>();
+            player = attempt.Quarterback;
+            Assert.That(attempt.IsActive, Is.False);
+            Assert.That(player.MovementAllowed, Is.False);
             joystick = Object.FindFirstObjectByType<TouchJoystick>();
             Assert.That(joystick, Is.Not.Null);
             joystick.SendMessage("OnApplicationFocus", true);
@@ -58,8 +62,113 @@ namespace FlagFootball.Tests.PlayMode
             Assert.That(Vector3.Distance(player.transform.position, position), Is.LessThan(0.0001f));
 
         [UnityTest]
+        public IEnumerator Attempt_PreparationRejectsDirectAndHeldTouchUntilFreshStart()
+        {
+            var initial = player.transform.position;
+            Assert.That(Mathf.Abs(initial.x), Is.LessThan(1f));
+            Assert.That(Mathf.Abs(initial.z), Is.LessThan(1f));
+            joystick.enabled = false;
+            player.SetMoveInput(Vector2.up);
+            yield return null;
+            AssertStopped(initial);
+            player.enabled = false;
+            player.SetMoveInput(Vector2.right);
+            player.enabled = true;
+            yield return null;
+            AssertStopped(initial);
+            joystick.enabled = true;
+            yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
+            AssertStopped(initial);
+            player.enabled = false;
+            player.SetMoveInput(Vector2.right);
+            Assert.That(attempt.StartAttempt(), Is.True);
+            player.enabled = true;
+            yield return null;
+            AssertStopped(initial);
+            yield return Touch(1, TouchPhase.Moved, Vector2.up);
+            AssertStopped(initial);
+            yield return Touch(1, TouchPhase.Ended, Vector2.up);
+            AssertStopped(initial);
+            yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
+            Assert.That(player.transform.position.x, Is.GreaterThan(initial.x));
+            var moving = player.transform.position;
+            Assert.That(attempt.StartAttempt(), Is.False);
+            yield return null;
+            Assert.That(player.transform.position.x, Is.GreaterThan(moving.x));
+        }
+
+        [UnityTest]
+        public IEnumerator Attempt_RestartBlocksCallbacksRestoresPoseAndRejectsOldGesture()
+        {
+            Assert.That(attempt.StartAttempt(), Is.True);
+            var initial = player.transform.position;
+            var rotation = player.transform.rotation;
+            var callbacks = 0;
+            attempt.Resetting += () =>
+            {
+                callbacks++;
+                Assert.That(attempt.IsActive, Is.False);
+                Assert.That(player.MovementAllowed, Is.False);
+                Assert.That(GameObject.Find("JoystickHandle").GetComponent<RectTransform>().anchoredPosition,
+                    Is.EqualTo(Vector2.zero));
+                Assert.That(player.transform.position, Is.Not.EqualTo(initial));
+                Assert.That(attempt.StartAttempt(), Is.False);
+                Assert.That(attempt.RestartAttempt(), Is.False);
+                player.SetMoveInput(Vector2.up);
+            };
+            yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
+            player.transform.SetPositionAndRotation(new Vector3(1f, initial.y, 1f), Quaternion.Euler(0f, 90f, 0f));
+            Assert.That(attempt.RestartAttempt(), Is.True);
+            AssertStopped(initial);
+            Assert.That(player.transform.rotation, Is.EqualTo(rotation));
+            player.transform.SetPositionAndRotation(new Vector3(-1f, initial.y, -1f), Quaternion.Euler(0f, 180f, 0f));
+            Assert.That(attempt.RestartAttempt(), Is.True); // Prepared restart still repairs disturbance.
+            AssertStopped(initial);
+            Assert.That(player.transform.rotation, Is.EqualTo(rotation));
+            Assert.That(callbacks, Is.EqualTo(2));
+            Assert.That(attempt.IsActive, Is.False);
+            Assert.That(attempt.StartAttempt(), Is.True);
+            yield return null;
+            AssertStopped(initial); // Interior, so no field clamp can hide stale movement.
+            yield return Touch(1, TouchPhase.Moved, Vector2.up);
+            AssertStopped(initial);
+            yield return Touch(1, TouchPhase.Ended, Vector2.up);
+            AssertStopped(initial);
+            yield return Touch(1, TouchPhase.Began, Vector2.left * 0.5f);
+            Assert.That(player.transform.position.x, Is.LessThan(initial.x));
+        }
+
+        [UnityTest]
+        public IEnumerator Attempt_CallbackFailureRestoresPreparationAndRequiresSuccessfulReset()
+        {
+            var initial = player.transform.position;
+            var rotation = player.transform.rotation;
+            Assert.That(attempt.StartAttempt(), Is.True);
+            System.Action failure = () => throw new System.InvalidOperationException("reset failure");
+            attempt.Resetting += failure;
+            player.transform.SetPositionAndRotation(new Vector3(1f, initial.y, 1f), Quaternion.Euler(0f, 90f, 0f));
+            Assert.Throws<System.InvalidOperationException>(() => attempt.RestartAttempt());
+            AssertStopped(initial);
+            Assert.That(player.transform.rotation, Is.EqualTo(rotation));
+            Assert.That(attempt.IsActive, Is.False);
+            Assert.That(player.MovementAllowed, Is.False);
+            Assert.That(attempt.StartAttempt(), Is.False);
+            Assert.Throws<System.InvalidOperationException>(() => attempt.RestartAttempt());
+            Assert.That(attempt.StartAttempt(), Is.False);
+            player.SetMoveInput(Vector2.right);
+            yield return null;
+            AssertStopped(initial);
+            attempt.Resetting -= failure;
+            Assert.That(attempt.RestartAttempt(), Is.True);
+            Assert.That(attempt.StartAttempt(), Is.True);
+            yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
+            Assert.That(player.transform.position.x, Is.GreaterThan(initial.x));
+        }
+
+        [UnityTest]
         public IEnumerator ActualTouchPath_ControlsAnalogSpeedOverdragDirectionAndRelease()
         {
+            Assert.That(attempt.StartAttempt(), Is.True);
             var before = player.transform.position;
             yield return Touch(1, TouchPhase.Began, Vector2.right * 0.25f);
             Assert.That(player.transform.position.x - before.x,
@@ -86,6 +195,7 @@ namespace FlagFootball.Tests.PlayMode
         [UnityTest]
         public IEnumerator PublicReset_StopsHeldMovementAndRequiresFreshTouch()
         {
+            Assert.That(attempt.StartAttempt(), Is.True);
             var start = player.transform.position;
             var handle = GameObject.Find("JoystickHandle").GetComponent<RectTransform>();
             yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
@@ -122,6 +232,7 @@ namespace FlagFootball.Tests.PlayMode
         [UnityTest]
         public IEnumerator PublicReset_RepeatedAndDisabledResetsDoNotReviveHeldTouch()
         {
+            Assert.That(attempt.StartAttempt(), Is.True);
             joystick.ResetInput();
             joystick.ResetInput();
             var start = player.transform.position;
@@ -160,6 +271,7 @@ namespace FlagFootball.Tests.PlayMode
         [UnityTest]
         public IEnumerator OtherFinger_CannotStealOrAutomaticallyInheritTheGesture()
         {
+            Assert.That(attempt.StartAttempt(), Is.True);
             yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
             var before = player.transform.position;
             yield return Touch(2, TouchPhase.Began, Vector2.up * 0.5f);
@@ -179,6 +291,7 @@ namespace FlagFootball.Tests.PlayMode
         [UnityTest]
         public IEnumerator TouchCancellation_StopsWithoutRetainingInput()
         {
+            Assert.That(attempt.StartAttempt(), Is.True);
             yield return Touch(1, TouchPhase.Began, Vector2.right);
             var before = player.transform.position;
             yield return Touch(1, TouchPhase.Canceled, Vector2.right);
@@ -190,6 +303,7 @@ namespace FlagFootball.Tests.PlayMode
         [UnityTest]
         public IEnumerator OutsideTouch_DoesNotActivateWhenDraggedIntoThePad()
         {
+            Assert.That(attempt.StartAttempt(), Is.True);
             var before = player.transform.position;
             yield return Touch(1, TouchPhase.Began, Vector2.right * 3f);
             yield return Touch(1, TouchPhase.Moved, Vector2.right * 0.5f);
@@ -199,6 +313,7 @@ namespace FlagFootball.Tests.PlayMode
         [UnityTest]
         public IEnumerator FocusPauseAndDisable_RequireFreshTouchesAfterReturn()
         {
+            Assert.That(attempt.StartAttempt(), Is.True);
             foreach (var interruption in new[] { "Focus", "Pause", "Disable" })
             {
                 yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
@@ -226,6 +341,7 @@ namespace FlagFootball.Tests.PlayMode
         [UnityTest]
         public IEnumerator FocusReturningBeforeUnpause_DoesNotEnableHeldTouch()
         {
+            Assert.That(attempt.StartAttempt(), Is.True);
             joystick.SendMessage("OnApplicationFocus", false);
             joystick.SendMessage("OnApplicationPause", true);
             joystick.SendMessage("OnApplicationFocus", true);
@@ -269,6 +385,7 @@ namespace FlagFootball.Tests.PlayMode
         [UnityTest]
         public IEnumerator IntegratedTouch_MovesFacesAndDrivesCameraThroughTurnAndRelease()
         {
+            Assert.That(attempt.StartAttempt(), Is.True);
             var view = Camera.main;
             var start = view.transform.position;
             var rotation = view.transform.rotation;
@@ -296,6 +413,7 @@ namespace FlagFootball.Tests.PlayMode
         [UnityTest]
         public IEnumerator IntegratedTouch_BoundsFramingAndFreshInputSurviveInterruption()
         {
+            Assert.That(attempt.StartAttempt(), Is.True);
             var rotation = Camera.main.transform.rotation;
             yield return Touch(1, TouchPhase.Began, Vector2.right);
             for (var frame = 0; frame < 120; frame++) { yield return null; AssertIntegratedFraming(); }

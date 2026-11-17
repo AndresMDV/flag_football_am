@@ -1,9 +1,12 @@
+using System;
+using FlagFootball.Core;
 using UnityEngine;
 
 namespace FlagFootball.Unity
 {
     public sealed class SceneBootstrap : MonoBehaviour
     {
+        [SerializeField] private PlayerMovement quarterback;
         [SerializeField, Min(80f)] private float joystickDiameter = 240f;
         [SerializeField, Min(0f)] private float joystickPadding = 64f;
         [SerializeField, Min(0.1f)] private float joystickSensitivity = 1f;
@@ -12,19 +15,69 @@ namespace FlagFootball.Unity
         private Material originalGroundMaterial, gridMaterial;
         private Texture2D gridTexture;
 
+        private readonly AttemptLifecycle lifecycle = new AttemptLifecycle();
+        private TouchJoystick joystick;
+        private Vector3 initialPosition;
+        private Quaternion initialRotation;
+        private bool resetting, resetFailed;
+
         public bool IsInitialized { get; private set; }
+        public PlayerMovement Quarterback => quarterback;
+        public bool IsActive => lifecycle.State == AttemptState.Active;
+        // Synchronous, registration-ordered, fail-fast callbacks while prepared and movement-blocked.
+        public event Action Resetting;
 
         private void Awake()
         {
-            IsInitialized = true;
-            Debug.Log("BASELINE_SCENE_READY");
+            if (!quarterback)
+            {
+                Debug.LogError("SceneBootstrap requires an explicit quarterback.", this);
+                enabled = false;
+                return;
+            }
+            quarterback.SetMovementAllowed(false);
+            initialPosition = quarterback.transform.position;
+            initialRotation = quarterback.transform.rotation;
         }
 
         private void Start()
         {
-            var player = FindFirstObjectByType<PlayerMovement>();
-            if (player) TouchJoystick.Create(player, joystickDiameter, joystickPadding, joystickSensitivity);
+            joystick = TouchJoystick.Create(quarterback, joystickDiameter, joystickPadding, joystickSensitivity);
             AddFieldGrid();
+            IsInitialized = true;
+            Debug.Log("BASELINE_SCENE_READY");
+        }
+
+        // False for duplicate activation, incomplete composition, reset callbacks or a failed reset.
+        public bool StartAttempt()
+        {
+            if (!IsInitialized || resetting || resetFailed || IsActive) return false;
+            joystick.ResetInput();
+            lifecycle.StartAttempt();
+            quarterback.SetMovementAllowed(true);
+            return true;
+        }
+
+        // True on completion, even when already prepared. Failures propagate and latch Start closed
+        // until a successful retry; finally still restores the original QB pose and clears reentrancy.
+        public bool RestartAttempt()
+        {
+            if (!IsInitialized || resetting) return false;
+            resetting = resetFailed = true;
+            quarterback.SetMovementAllowed(false);
+            lifecycle.RestartAttempt();
+            joystick.ResetInput();
+            try
+            {
+                Resetting?.Invoke();
+                resetFailed = false;
+            }
+            finally
+            {
+                quarterback.transform.SetPositionAndRotation(initialPosition, initialRotation);
+                resetting = false;
+            }
+            return true;
         }
 
         private void AddFieldGrid()
