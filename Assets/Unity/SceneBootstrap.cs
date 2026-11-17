@@ -17,6 +17,7 @@ namespace FlagFootball.Unity
 
         private readonly AttemptLifecycle lifecycle = new AttemptLifecycle();
         private TouchJoystick joystick;
+        private AttemptControls actionControls;
         private Vector3 initialPosition;
         private Quaternion initialRotation;
         private Transform receiver, ball;
@@ -55,6 +56,7 @@ namespace FlagFootball.Unity
             CreatePreparedActors();
             Camera.main.GetComponent<RunningCamera>().RefreshSubjectVisuals();
             IsInitialized = true;
+            actionControls = AttemptControls.Create(this, joystick.SafeArea);
             Debug.Log("BASELINE_SCENE_READY");
         }
 
@@ -65,6 +67,7 @@ namespace FlagFootball.Unity
             joystick.ResetInput();
             lifecycle.StartAttempt();
             quarterback.SetMovementAllowed(true);
+            actionControls.RefreshState();
             return true;
         }
 
@@ -91,6 +94,7 @@ namespace FlagFootball.Unity
                 ball.localRotation = heldRotation;
                 ball.localScale = heldScale;
                 resetting = false;
+                actionControls.RefreshState();
             }
             return true;
         }
@@ -150,6 +154,13 @@ namespace FlagFootball.Unity
 
         private void OnDestroy()
         {
+            IsInitialized = false;
+            if (quarterback) quarterback.SetMovementAllowed(false);
+            if (joystick)
+            {
+                joystick.gameObject.SetActive(false);
+                Destroy(joystick.gameObject);
+            }
             if (receiver) Destroy(receiver.gameObject);
             if (ball) Destroy(ball.gameObject);
             if (receiverMaterial) Destroy(receiverMaterial);

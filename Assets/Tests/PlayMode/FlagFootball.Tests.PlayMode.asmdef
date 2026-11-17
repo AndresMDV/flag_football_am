@@ -1,6 +1,6 @@
 {
   "name": "FlagFootball.Tests.PlayMode",
-  "references": ["FlagFootball.Unity", "UnityEngine.TestRunner", "Unity.InputSystem"],
+  "references": ["FlagFootball.Unity", "UnityEngine.TestRunner", "Unity.InputSystem", "UnityEngine.UI"],
   "includePlatforms": [],
   "overrideReferences": true,
   "precompiledReferences": ["nunit.framework.dll"],

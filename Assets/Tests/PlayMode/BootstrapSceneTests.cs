@@ -115,6 +115,8 @@ namespace FlagFootball.Tests.PlayMode
             var qb = attempt.Quarterback.transform;
             var view = Camera.main;
             var driver = view.GetComponent<RunningCamera>();
+            var controls = Object.FindFirstObjectByType<AttemptControls>();
+            var touchRoot = controls.transform.root.gameObject;
             var field = GameObject.Find("Ground").GetComponent<Renderer>();
             var receiver = attempt.Receiver;
             var ball = attempt.Ball;
@@ -124,6 +126,7 @@ namespace FlagFootball.Tests.PlayMode
             yield return null;
             yield return null;
             Assert.That(attempt == null && receiver == null && ball == null, Is.True);
+            Assert.That(controls == null && touchRoot == null, Is.True, "Owner must dispose all touch UI.");
             foreach (var material in materials) Assert.That(material == null, Is.True);
             Assert.That(qb && field && SceneManager.GetSceneByName("Bootstrap").isLoaded, Is.True);
             var previousPosition = view.transform.position;

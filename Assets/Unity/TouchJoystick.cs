@@ -20,6 +20,7 @@ namespace FlagFootball.Unity
         private Sprite circleSprite;
         private bool hasFocus = true, paused;
         private double acceptTouchesAfter;
+        internal RectTransform SafeArea => safeArea;
 
         public static TouchJoystick Create(PlayerMovement player, float diameter, float padding, float sensitivity)
         {

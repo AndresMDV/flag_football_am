@@ -1,6 +1,6 @@
 # Flag Football Android Prototype
 
-A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap starts with an explicitly bound QB, a stationary receiver and a visible QB-held ball, with movement blocked until public Start. A fixed bottom-left joystick and bounded, fixed-orientation running camera support active QB movement. This intermediate lab has no usable Start/Restart buttons yet: activation requires the public API or automated harness, not physical gameplay validation.
+A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap starts with an explicitly bound QB, a stationary receiver and a visible QB-held ball, with movement blocked until Start. Visible Start/Restart touch controls and public actions drive repeatable attempts; a bottom-left joystick and bounded running camera support active QB movement. This candidate has automated integration evidence, not new physical-device validation.
 
 ## Run the checks
 
@@ -62,7 +62,7 @@ Touch inside the bottom-left circle, drag to change direction/speed, and lift to
 | Sensitivity | 1 (linear; full speed at one radius, no dead zone) |
 | Canvas scaling | 1920 × 1080 reference, matched to screen height |
 
-Edit the serialized joystick fields on `SceneBootstrap` before Play mode. The circular pad and handle are created once at startup inside `Screen.safeArea`; no imported UI artwork or additional buttons are needed. At sensitivity 1, half-radius input requests half speed. The handle stays inside the circle while the controlling finger may travel beyond it.
+Edit the serialized joystick fields on `SceneBootstrap` before Play mode. The circular pad and handle are created once at startup inside `Screen.safeArea`, alongside the attempt controls described below; no imported UI artwork is needed. At sensitivity 1, half-radius input requests half speed. The handle stays inside the circle while the controlling finger may travel beyond it.
 
 Input uses **Input System 1.20.1 EnhancedTouch** and **uGUI 2.0.0**, with `activeInputHandler: 1` (new Input System only). Changing the backend requires restarting an open Editor. There are no legacy `Input.Get*` calls, keyboard controls, action assets or UI event modules: the adapter polls actual touch phases and screen positions, feeds the engine-free `JoystickGesture`, then calls `PlayerMovement.SetMoveInput` before movement updates. Device and touch IDs together identify the owner.
 
@@ -93,15 +93,15 @@ Verification through actual virtual `Touchscreen` event dispatch:
 
 `python3 scripts/run_unity_tests.py --platform PlayMode --test-filter 'TouchJoystickTests.PublicReset_'` passed **2/2**. Before exposure, the same command failed compilation with CS1061 (no accessible `ResetInput`), runner exit 1 and no XML. After exposure, `python3 scripts/run_unity_tests.py` passed **30 EditMode + 19 PlayMode**, zero failures/skips, Editor exits 0. Ignored XML/log artifacts are under `TestResults/20261117T020328819680Z` (focused) and `TestResults/20261117T020410209579Z` (full); the RED log is under `TestResults/20261117T020259526024Z`.
 
-These are headless input simulations, not new physical touch, Android, rendered-visual or lock/unlock evidence. This is the input foundation for [#14](https://github.com/AndresMDV/flag_football_am/issues/14); the prepared lifecycle below builds on it. Receiver/held-ball preparation is now included; usable Start/Restart controls remain unimplemented. Existing physical evidence below applies only to its named APK.
+These are headless input simulations, not new physical touch, Android, rendered-visual or lock/unlock evidence. This is the input foundation for [#14](https://github.com/AndresMDV/flag_football_am/issues/14); the prepared lifecycle below builds on it. Receiver/held-ball preparation and the Start/Restart controls below now use this foundation. Existing physical evidence below applies only to its named APK.
 
 Rollback this unit independently by restoring `ResetInput` to private, removing its new API comment and the two `PublicReset_` tests, and removing this subsection. No scene, metadata, core, movement or startup changes need reverting.
 
-### Prepared attempts (#14 intermediate deliveries)
+### Prepared attempts (#14)
 
 `SceneBootstrap.Quarterback` explicitly references the existing orange `Placeholder`; runtime role selection never scans for an actor. The pinned Editor action `ProjectSetup.ConfigureAttemptQuarterback` saved this binding without regenerating baseline assets. The initial world position `(0, 0.5, 0)` and identity rotation are captured once in `Awake`, before movement, not recaptured on restart.
 
-After `IsInitialized` becomes true in `Start`, an automated harness or future action adapter can call the public synchronous actions:
+After `IsInitialized` becomes true in `Start`, the touch controls and external callers share these public synchronous actions:
 
 - `StartAttempt()` returns true only for Preparation → Active. It clears joystick ownership/freshness before allowing movement. Duplicate Active Start returns false without disturbing a held gesture.
 - `RestartAttempt()` returns true on successful completion, including while already prepared. It closes the movement gate, publishes Preparation and cancels the joystick before invoking `Resetting` subscribers in registration order, then restores both original actor poses and QB possession. Start and nested Restart are rejected during callbacks. A new explicit Start and a new `Began` gesture are required afterward.
@@ -133,7 +133,25 @@ Scene-owner destruction releases both primitives (even a detached ball) and thei
 
 Actor-composition full regression: `python3 scripts/run_unity_tests.py --platform EditMode` passed **33/33** and `--platform PlayMode` passed **25/25**, zero failures/skips, Editor exits 0. All 56 previous case fullnames remain passing; both new actor checks pass. Ignored reports: `TestResults/20261117T125003194727Z/EditMode.xml` and `TestResults/20261117T125016992114Z/PlayMode.xml`. These are automated scene/virtual-touch checks, not new Android or physical-device evidence.
 
-Usable Start/Restart UI remains the final delivery. Routes, charge, flight, catch, control transfer, passing camera and interruption-to-attempt policy remain absent. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
+The final delivery adds the Start/Restart controls below. Routes, charge, flight, catch, control transfer, passing camera and interruption-to-attempt policy remain absent. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
+
+#### Start/Restart touch controls
+
+1. Press **Start | Preparation** at bottom right, then begin a fresh bottom-left joystick gesture. Only the QB and its held ball move; the label becomes **Start | Active**.
+2. Press **Restart** to restore both original poses and QB possession/ball-local pose/scale. The label returns to Preparation. A new Start and a new joystick gesture are required.
+3. Repeated Start while Active preserves held movement; repeated Restart while prepared repairs disturbances without duplicating actors or UI.
+
+Actions activate on a fresh **press (`Began`)**, never release. A touch begun outside cannot drag in to activate. `AttemptControls` receives its explicit `SceneBootstrap` owner and the existing joystick safe-area transform; no actor lookup, EventSystem, UI event module, new action asset or keyboard feature is involved. Restart takes priority over every Start in the same input batch. The synchronous `Resetting` subscription invalidates all earlier action-touch start timestamps, including pending Began; held/moved/released old Start or Restart pointers cannot act after reset. Public actions update the label synchronously, including fail-closed callback failures.
+
+Both 360 × 128 reference-unit regions sit at bottom right with a 32-unit vertical gap and 64-unit edge padding; the joystick remains bottom left. Height-matched canvas scaling and the shared `Screen.safeArea` anchors preserve placement across landscape aspects. White 30-unit labels sit on dark backgrounds. Layout tests exercise actual RectTransforms at 16:9, 20:9 and 2.5 with a representative inset safe area; batch Screen resolution itself remains 4:3. Tests check region separation, label fit and prepared actor/ball renderer corners, not rendered pixels or physical target size.
+
+Disabled, paused or unfocused controls accept no actions; return/re-enable invalidates pending gestures. This neutralizes input only, not #21's full interruption-to-attempt policy. Each adapter balances its own EnhancedTouch enable/disable reference without clearing shared state. Disabling controls unsubscribes Resetting; owner destruction disables/destroys the complete owned touch canvas, clears movement permission and releases its controls alongside the prepared visuals. No orphan active buttons remain; the surviving camera/QB owner-only regression is retained.
+
+Verification: `python3 scripts/run_unity_tests.py --platform PlayMode --test-filter 'TouchJoystickTests.Actions_'` exercises `Actions_StartRestartRestoreAndRequireFreshMovement`, `Actions_ResetRejectsPendingSameFrameAndOutsideGestures`, `Actions_InterruptionsNeutralizePendingGesturesAndExternalState` and `Actions_LayoutIsReadableDisjointAndSafeAcrossLandscapeAspects`. These use actual virtual Touchscreen event dispatch, not direct UI listener calls. The full EditMode/PlayMode suites retain all 59 previous named cases alongside these four additions. `PreparedActors_OwnerOnlyDestructionKeepsCameraUpdating` also verifies complete touch-UI teardown.
+
+Manual scenario still unverified on this candidate: confirm label/target readability and cutout clearance in both landscape orientations; hold joystick and Start fingers, press Restart with another finger, move/lift old fingers, and verify only fresh Start plus fresh joystick resumes QB movement. Repeat after app return. Automated virtual input does not prove physical touch, Android/IL2CPP behavior, lock/unlock, accessibility, FPS or thermal performance; historical APK evidence remains separately scoped below.
+
+Rollback only the final control delivery against its saved pre-unit snapshot: remove `AttemptControls.cs` with its Unity-generated metadata, restore only its Bootstrap/joystick ownership wiring, added action tests/teardown assertions, PlayMode uGUI test reference and this documentation. Preserve the previous lifecycle/input/actor/camera implementations and all 59 prior cases; do not restore from HEAD.
 
 ### Physical Pixel checks
 
@@ -208,7 +226,7 @@ See the [integration evidence report](docs/movement-verification.md) for exact s
 
 ## Build and launch the Android prototype
 
-The current scene waits in Preparation and has no usable Start/Restart UI; the commands below remain build infrastructure, not a claim that this intermediate candidate is physically playable. Historical device evidence applies only to its named APK.
+The current scene waits in Preparation with Start/Restart touch controls. The commands below remain build infrastructure: this candidate has not been built, installed or physically verified. Historical device evidence applies only to its named APK.
 
 From the repository root, with the Editor closed:
 

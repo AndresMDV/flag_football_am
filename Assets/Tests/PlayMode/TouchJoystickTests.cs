@@ -6,6 +6,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 using TouchPhase = UnityEngine.InputSystem.TouchPhase;
 
 namespace FlagFootball.Tests.PlayMode
@@ -91,6 +92,209 @@ namespace FlagFootball.Tests.PlayMode
             ball.SetPositionAndRotation(new Vector3(3f, 2f, -1f), Quaternion.Euler(35f, 15f, 90f));
             ball.localScale = Vector3.one * 2f;
             Assert.That(attempt.BallOwner, Is.Null, "A detached ball is not QB-held.");
+        }
+
+        private void QueueAction(int id, TouchPhase phase, RectTransform region)
+        {
+            InputSystem.QueueStateEvent(screen, new TouchState
+            {
+                touchId = id, phase = phase,
+                position = RectTransformUtility.WorldToScreenPoint(null, region.position)
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Actions_StartRestartRestoreAndRequireFreshMovement()
+        {
+            var controls = Object.FindFirstObjectByType<AttemptControls>();
+            var initial = player.transform.position;
+            var rotation = player.transform.rotation;
+            QueueAction(1, TouchPhase.Began, controls.StartRegion);
+            yield return null;
+            Assert.That(attempt.IsActive, Is.True);
+            Assert.That(controls.StartRegion.GetComponentInChildren<Text>().text, Does.Contain("Active"));
+            AssertStopped(initial);
+            yield return Touch(2, TouchPhase.Began, Vector2.right * 0.5f);
+            Assert.That(player.transform.position.x, Is.GreaterThan(initial.x));
+            var moving = player.transform.position;
+            QueueAction(3, TouchPhase.Began, controls.StartRegion); // Duplicate must preserve held movement.
+            yield return null;
+            Assert.That(player.transform.position.x, Is.GreaterThan(moving.x));
+            var cameraDriver = Camera.main.GetComponent<RunningCamera>();
+            cameraDriver.enabled = false; // Disturbed detached geometry is intentionally not camera-feasible.
+            player.transform.rotation = Quaternion.Euler(0f, 90f, 0f);
+            DisturbPreparedActors();
+            QueueAction(4, TouchPhase.Began, controls.RestartRegion);
+            yield return null;
+            Assert.That(attempt.IsActive, Is.False);
+            AssertStopped(initial);
+            Assert.That(player.transform.rotation, Is.EqualTo(rotation));
+            AssertPreparedActors();
+            Assert.That(controls.StartRegion.GetComponentInChildren<Text>().text, Does.Contain("Preparation"));
+            QueueAction(1, TouchPhase.Moved, controls.StartRegion);
+            yield return Touch(2, TouchPhase.Moved, Vector2.up);
+            Assert.That(attempt.IsActive, Is.False);
+            AssertStopped(initial);
+            QueueAction(1, TouchPhase.Ended, controls.StartRegion);
+            yield return Touch(2, TouchPhase.Ended, Vector2.up);
+            Assert.That(attempt.IsActive, Is.False);
+            QueueAction(5, TouchPhase.Began, controls.RestartRegion); // Duplicate prepared reset repairs damage.
+            DisturbPreparedActors();
+            yield return null;
+            AssertPreparedActors();
+            cameraDriver.enabled = true;
+            QueueAction(6, TouchPhase.Began, controls.StartRegion);
+            yield return null;
+            Assert.That(attempt.IsActive, Is.True);
+            AssertStopped(initial);
+            yield return Touch(7, TouchPhase.Began, Vector2.left * 0.5f);
+            Assert.That(player.transform.position.x, Is.LessThan(initial.x));
+            AssertPreparedActors();
+            QueueAction(4, TouchPhase.Moved, controls.RestartRegion);
+            yield return null;
+            Assert.That(attempt.IsActive, Is.True, "Old Restart pointer cannot reset a new attempt.");
+            QueueAction(4, TouchPhase.Ended, controls.RestartRegion);
+            yield return null;
+            Assert.That(attempt.IsActive, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator Actions_ResetRejectsPendingSameFrameAndOutsideGestures()
+        {
+            var controls = Object.FindFirstObjectByType<AttemptControls>();
+            foreach (var restartFirst in new[] { false, true })
+            {
+                QueueAction(1, TouchPhase.Began, restartFirst ? controls.RestartRegion : controls.StartRegion);
+                QueueAction(2, TouchPhase.Began, restartFirst ? controls.StartRegion : controls.RestartRegion);
+                yield return null;
+                Assert.That(attempt.IsActive, Is.False, "Restart wins the whole input batch.");
+                QueueAction(1, TouchPhase.Ended, controls.StartRegion);
+                QueueAction(2, TouchPhase.Ended, controls.RestartRegion);
+                yield return null;
+                Assert.That(attempt.IsActive, Is.False, "Release never performs an action.");
+            }
+            QueueAction(3, TouchPhase.Began, controls.StartRegion);
+            Assert.That(attempt.RestartAttempt(), Is.True); // Queued before reset, dispatched afterward.
+            yield return null;
+            Assert.That(attempt.IsActive, Is.False);
+            QueueAction(3, TouchPhase.Ended, controls.StartRegion);
+            yield return null;
+            QueueAction(3, TouchPhase.Began, controls.StartRegion);
+            InputSystem.Update(); // Began is pending polling when an external reset closes the epoch.
+            Assert.That(attempt.RestartAttempt(), Is.True);
+            Assert.That(attempt.RestartAttempt(), Is.True);
+            yield return null;
+            Assert.That(attempt.IsActive, Is.False);
+            QueueAction(3, TouchPhase.Moved, controls.StartRegion);
+            yield return null;
+            QueueAction(3, TouchPhase.Ended, controls.StartRegion);
+            yield return null;
+            Assert.That(attempt.IsActive, Is.False);
+            yield return Touch(4, TouchPhase.Began, Vector2.zero); // Starts outside action regions.
+            QueueAction(4, TouchPhase.Moved, controls.StartRegion);
+            yield return null;
+            QueueAction(4, TouchPhase.Ended, controls.StartRegion);
+            yield return null;
+            Assert.That(attempt.IsActive, Is.False);
+            QueueAction(5, TouchPhase.Began, controls.StartRegion);
+            yield return null;
+            Assert.That(attempt.IsActive, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator Actions_InterruptionsNeutralizePendingGesturesAndExternalState()
+        {
+            var controls = Object.FindFirstObjectByType<AttemptControls>();
+            foreach (var interruption in new[] { "Focus", "Pause", "Disable" })
+            {
+                QueueAction(1, TouchPhase.Began, controls.StartRegion);
+                InputSystem.Update();
+                if (interruption == "Disable") controls.enabled = false;
+                else controls.SendMessage("OnApplication" + interruption, interruption == "Pause");
+                yield return null;
+                QueueAction(3, TouchPhase.Began, controls.StartRegion); // Fresh input while unavailable is also inert.
+                yield return null;
+                Assert.That(attempt.IsActive, Is.False);
+                if (interruption == "Disable") controls.enabled = true;
+                else controls.SendMessage("OnApplication" + interruption, interruption == "Focus");
+                yield return null;
+                Assert.That(attempt.IsActive, Is.False, interruption);
+                QueueAction(1, TouchPhase.Ended, controls.StartRegion);
+                QueueAction(3, TouchPhase.Ended, controls.StartRegion);
+                yield return null;
+                Assert.That(attempt.IsActive, Is.False);
+                QueueAction(2, TouchPhase.Began, controls.StartRegion);
+                yield return null;
+                Assert.That(attempt.IsActive, Is.True, interruption);
+                Assert.That(attempt.RestartAttempt(), Is.True);
+                Assert.That(controls.StartRegion.GetComponentInChildren<Text>().text, Does.Contain("Preparation"));
+                QueueAction(2, TouchPhase.Ended, controls.StartRegion);
+                yield return null;
+            }
+            Assert.That(attempt.StartAttempt(), Is.True);
+            Assert.That(controls.StartRegion.GetComponentInChildren<Text>().text, Does.Contain("Active"));
+            System.Action failure = () => throw new System.InvalidOperationException("action reset failure");
+            attempt.Resetting += failure;
+            Assert.Throws<System.InvalidOperationException>(() => attempt.RestartAttempt());
+            Assert.That(controls.StartRegion.GetComponentInChildren<Text>().text, Does.Not.Contain("Active"));
+            Assert.That(attempt.StartAttempt(), Is.False);
+            attempt.Resetting -= failure;
+            Assert.That(attempt.RestartAttempt(), Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator Actions_LayoutIsReadableDisjointAndSafeAcrossLandscapeAspects()
+        {
+            var controls = Object.FindFirstObjectByType<AttemptControls>();
+            joystick.enabled = false;
+            var canvas = controls.GetComponentInParent<Canvas>();
+            canvas.GetComponent<CanvasScaler>().enabled = false;
+            canvas.renderMode = RenderMode.WorldSpace; // Batch Screen remains 4:3; exercise real rects in reference pixels.
+            var canvasRect = canvas.GetComponent<RectTransform>();
+            canvasRect.localScale = Vector3.one;
+            var safeArea = pad.parent.GetComponent<RectTransform>();
+            foreach (var targetWidth in new[] { 1920, 2400, 2700 })
+            {
+                canvasRect.sizeDelta = new Vector2(targetWidth, 1080f);
+                canvasRect.position = new Vector3(targetWidth * 0.5f, 540f);
+                var area = new Rect(64f, 32f, targetWidth - 128f, 1016f);
+                safeArea.anchorMin = new Vector2(area.xMin / targetWidth, area.yMin / 1080f);
+                safeArea.anchorMax = new Vector2(area.xMax / targetWidth, area.yMax / 1080f);
+                Camera.main.aspect = targetWidth / 1080f;
+                yield return null;
+                Canvas.ForceUpdateCanvases();
+                var regions = new[] { controls.StartRegion, controls.RestartRegion, pad };
+                var rectangles = new Rect[3];
+                for (var i = 0; i < regions.Length; i++)
+                {
+                    var corners = new Vector3[4];
+                    regions[i].GetWorldCorners(corners);
+                    rectangles[i] = Rect.MinMaxRect(corners[0].x, corners[0].y, corners[2].x, corners[2].y);
+                    Assert.That(area.Contains(rectangles[i].min), Is.True);
+                    Assert.That(area.Contains(rectangles[i].max), Is.True);
+                    Assert.That(rectangles[i].height / 1080f, Is.GreaterThanOrEqualTo(0.09f));
+                    if (i == 2) continue;
+                    var label = regions[i].GetComponentInChildren<Text>();
+                    Assert.That(label.text, Does.StartWith(i == 0 ? "Start" : "Restart"));
+                    Assert.That(label.font && label.enabled && label.color.a == 1f, Is.True);
+                    Assert.That(label.fontSize, Is.GreaterThanOrEqualTo(28));
+                    Assert.That(label.preferredWidth, Is.LessThanOrEqualTo(regions[i].rect.width));
+                    Assert.That(label.preferredHeight, Is.LessThanOrEqualTo(regions[i].rect.height));
+                    foreach (var actor in new[] { player.transform, receiver, ball })
+                    for (var corner = 0; corner < 8; corner++)
+                    {
+                        var bounds = actor.GetComponent<Renderer>().bounds;
+                        var point = new Vector3((corner & 1) == 0 ? bounds.min.x : bounds.max.x,
+                            (corner & 2) == 0 ? bounds.min.y : bounds.max.y,
+                            (corner & 4) == 0 ? bounds.min.z : bounds.max.z);
+                        var viewport = Camera.main.WorldToViewportPoint(point);
+                        Assert.That(rectangles[i].Contains(new Vector2(viewport.x * targetWidth,
+                            viewport.y * 1080f)), Is.False);
+                    }
+                }
+                Assert.That(rectangles[0].Overlaps(rectangles[1]) || rectangles[0].Overlaps(rectangles[2]) ||
+                    rectangles[1].Overlaps(rectangles[2]), Is.False);
+            }
         }
 
         [UnityTest]
