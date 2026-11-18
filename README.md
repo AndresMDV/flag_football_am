@@ -1,6 +1,6 @@
 # Flag Football Android Prototype
 
-A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap starts with an explicitly bound QB, a stationary receiver and a visible QB-held ball, with movement blocked until Start. Visible Start/Restart touch controls and public actions drive repeatable attempts; a bottom-left joystick and bounded running camera support active QB movement. Automated integration checks and the scoped, user-confirmed Pixel checks below cover this increment.
+A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap prepares an explicitly bound QB, receiver and visible QB-held ball, with movement blocked until Start. Start/Restart controls drive repeatable attempts: the joystick controls the QB independently of an automatic one-cut receiver route. The running camera still follows only the QB. Automated route checks do not extend the historical Pixel evidence below to this candidate.
 
 ## Run the checks
 
@@ -21,7 +21,7 @@ The runner uses Unity batch mode with Android as the active build target. It del
 
 | Path | Responsibility |
 | --- | --- |
-| `Assets/Core` | Pure C# attempt lifecycle, movement, bounds, joystick gesture rules and constrained camera smoothing; engine references disabled. |
+| `Assets/Core` | Pure C# attempt lifecycle, one-cut routes, movement, bounds, joystick gesture rules and constrained camera smoothing; engine references disabled. |
 | `Assets/Unity` | Scene initialization, movement/touch adapters, runtime visuals and camera projection/framing. May reference Core, never the reverse. |
 | `Assets/Editor` | One-time baseline asset/scene setup, plus the repeatable Android development build action. Setup refuses to overwrite existing baseline assets. |
 | `Assets/Tests/EditMode` | Movement behavior plus assembly identity and absence of Unity dependencies. |
@@ -105,7 +105,7 @@ After `IsInitialized` becomes true in `Start`, the touch controls and external c
 
 - `StartAttempt()` returns true only for Preparation → Active. It clears joystick ownership/freshness before allowing movement. Duplicate Active Start returns false without disturbing a held gesture.
 - `RestartAttempt()` returns true on successful completion, including while already prepared. It closes the movement gate, publishes Preparation and cancels the joystick before invoking `Resetting` subscribers in registration order, then restores both original actor poses and QB possession. Start and nested Restart are rejected during callbacks. A new explicit Start and a new `Began` gesture are required afterward.
-- `Resetting` is the small integration boundary for future route/charge/flight/control/camera adapters, not implementations of them. Subscribers must reset synchronously/idempotently and unsubscribe when disposed. Exceptions propagate immediately (later callbacks are skipped); pose restoration and reentrancy cleanup still run, and Start stays blocked until a successful Restart retry.
+- `Resetting` is the small integration boundary for future charge/flight/control/camera adapters. The owner resets its receiver route before these callbacks. Subscribers must reset synchronously/idempotently and unsubscribe when disposed. Exceptions propagate immediately (later callbacks are skipped); pose restoration and reentrancy cleanup still run, and Start stays blocked until a successful Restart retry.
 
 The engine-free `AttemptLifecycle.State` exposes Preparation/Active; its action booleans report whether state changed. The scene's Restart boolean instead reports transaction completion. Preparation rejects both touch and direct movement requests; disabling/re-enabling movement cannot bypass it. Focus/pause still neutralize input only: interruption-to-attempt reset belongs to #21.
 
@@ -125,19 +125,19 @@ The earlier lifecycle unit can be rolled back separately after removing dependen
 | Receiver | Blue cube named `Receiver`; world `(1.5, 0.5, 1)`, identity rotation, scale `(0.6, 1, 1)` |
 | Ball | Brown ellipsoid named `Ball`; QB-local position `(0.8, 0.1, 0.2)`, identity local rotation; world size `(0.22, 0.18, 0.36)` at the initial pose, local scale approximately `(0.366667, 0.18, 0.36)` compensating QB scale |
 
-The receiver has no movement/input adapter. Neither added visual has a collider or rigidbody. Preparation keeps both actors still under joystick input; Active moves only the QB and its attached ball. The initial poses and ball parent-relative pose/scale are captured once. Every Restart, including repeated prepared resets and callback failures, restores them in the existing `finally` block; detached/mutated balls are reattached. Callback ordering, blocked reentrancy and fail-closed retry behavior are unchanged.
+The receiver has no joystick movement adapter. Neither added visual has a collider or rigidbody. Preparation keeps both actors still under joystick input; Active now runs the independent receiver route below while the joystick moves the QB and its attached ball. The initial poses and ball parent-relative pose/scale are captured once. Every Restart, including repeated prepared resets and callback failures, restores them in the existing `finally` block; detached/mutated balls are reattached. Callback ordering, blocked reentrancy and fail-closed retry behavior are unchanged.
 
 After composition, Bootstrap explicitly refreshes the running camera's cached QB-child renderers so the ball participates in existing full-renderer edge framing. The nearby receiver is initially framed at 16:9, 20:9 and 2.5 aspect. Keeping the receiver visible throughout unrestricted QB movement is not promised; passing-camera behavior belongs to #16. Renderer-corner projection checks establish geometric containment, not rendered pixels or physical readability.
 
-Scene-owner destruction releases both primitives (even a detached ball) and their materials. The surviving running camera skips destroyed cached visuals and keeps framing the QB; `PreparedActors_OwnerOnlyDestructionKeepsCameraUpdating` verifies owner-only cleanup across subsequent camera frames. Repeated Restart reuses the same objects. `BootstrapSceneTests.PreparedActors_ExposeDistinctRolesHeldBallAndInitialFraming` and `PreparedActors_RepeatedSceneUnloadDestroysOwnedVisualsAndMaterials` cover roles, initial geometry and repeated scene/reset cleanup. Existing `TouchJoystickTests.Attempt_` cases also disturb both actor poses and ball attachment/local pose/scale, verify reset/failure recovery and exercise fresh virtual touch with a stationary receiver.
+Scene-owner destruction releases both primitives (even a detached ball) and their materials. The surviving running camera skips destroyed cached visuals and keeps framing the QB; `PreparedActors_OwnerOnlyDestructionKeepsCameraUpdating` verifies owner-only cleanup across subsequent camera frames. Repeated Restart reuses the same objects. `BootstrapSceneTests.PreparedActors_ExposeDistinctRolesHeldBallAndInitialFraming` and `PreparedActors_RepeatedSceneUnloadDestroysOwnedVisualsAndMaterials` cover roles, initial geometry and repeated scene/reset cleanup. Existing `TouchJoystickTests.Attempt_` cases also disturb both actor poses and ball attachment/local pose/scale, verify reset/failure recovery and exercise fresh virtual touch independently of receiver route progress; prepared pose checks remain exact.
 
 Actor-composition full regression: `python3 scripts/run_unity_tests.py --platform EditMode` passed **33/33** and `--platform PlayMode` passed **25/25**, zero failures/skips, Editor exits 0. All 56 previous case fullnames remain passing; both new actor checks pass. Ignored reports: `TestResults/20261117T125003194727Z/EditMode.xml` and `TestResults/20261117T125016992114Z/PlayMode.xml`. These are automated scene/virtual-touch checks, not new Android or physical-device evidence.
 
-The final delivery adds the Start/Restart controls below. Routes, charge, flight, catch, control transfer, passing camera and interruption-to-attempt policy remain absent. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
+The #14 delivery added the Start/Restart controls below; #15 adds the receiver route. Charge, flight, catch, control transfer, passing camera and interruption-to-attempt policy remain absent. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
 
 #### Start/Restart touch controls
 
-1. Press **Start | Preparation** at bottom right, then begin a fresh bottom-left joystick gesture. Only the QB and its held ball move; the label becomes **Start | Active**.
+1. Press **Start | Preparation** at bottom right, then begin a fresh bottom-left joystick gesture. The QB and its held ball follow the joystick while the receiver runs its route; the label becomes **Start | Active**.
 2. Press **Restart** to restore both original poses and QB possession/ball-local pose/scale. The label returns to Preparation. A new Start and a new joystick gesture are required.
 3. Repeated Start while Active preserves held movement; repeated Restart while prepared repairs disturbances without duplicating actors or UI.
 
@@ -152,6 +152,28 @@ Verification: `python3 scripts/run_unity_tests.py --platform PlayMode --test-fil
 The scoped physical results below cover six user-confirmed scenarios on this candidate. Lock/unlock and app return were not accepted in this round. Automated virtual input alone does not establish physical usability, accessibility, FPS or thermal performance; historical APK evidence remains separately scoped.
 
 Rollback only the final control delivery against its saved pre-unit snapshot: remove `AttemptControls.cs` with its Unity-generated metadata, restore only its Bootstrap/joystick ownership wiring, added action tests/teardown assertions, PlayMode uGUI test reference and this documentation. Preserve the previous lifecycle/input/actor/camera implementations and all 59 prior cases; do not restore from HEAD.
+
+### One-cut receiver route (#15)
+
+Start launches one internally configured route, independent of QB input. The existing `SceneBootstrap` owns the explicit receiver and advances the engine-free `OneCutRoute` in `Update` only while Active. No extra movement component, input binding, coroutine or event subscription controls the receiver.
+
+| Internal setting on `SceneBootstrap` | Default |
+| --- | --- |
+| Start world X/Y/Z | `(1.5, 0.5, 1)`; initial forward +Z |
+| Cut offset X/Z from start | `(0, 3)` → world `(1.5, 0.5, 4)` |
+| End offset X/Z from start | `(3, 3)` → world `(4.5, 0.5, 4)` |
+| Speed / timing | 3 world units/second; cut at 1 second, end at 2 seconds |
+| Direction change | +Z to +X, one 90-degree right cut |
+
+These points are inside the existing test area. Tune the serialized offsets/speed before Play mode, keeping both legs nonzero, noncollinear and inside that area. Core rejects nonfinite coordinates/time, negative time and nonpositive/nonfinite speed. Accumulated path distance consumes frame overshoot across the cut and clamps at the endpoint; different time-step partitions preserve progress. Facing follows the current travel leg, retains the incoming direction exactly at the cut, then retains +X while waiting at the end. Duplicate Start never rewinds or loops, even when the attempt remains Active at the endpoint.
+
+Restart stops the model before reset callbacks and restores the original receiver pose in the existing `finally`; a callback failure cannot cause late route movement and still blocks Start until a successful reset. Preparation never advances the route. The next Start repeats the same route. Disabling the owner pauses its route Update; destruction leaves no independent route worker. This is not #21's full interruption policy.
+
+`OneCutRouteTests` covers public start/cut/end/wait/reset/repeat, cut overshoot/time partitions, custom geometry/speed/facing and invalid inputs. `TouchJoystickTests.Route_PublicAttemptsAndTouch_ProgressCutWaitAndRepeatIndependently` drives actual public attempts and virtual QB touches through a moving reset, two complete runs, the cut, endpoint waiting and independent QB turns. Existing prepared/reset/ball-ownership, touch freshness, camera bounds and owner-cleanup checks remain.
+
+This is **lab scaffolding**, not any of the six final playbook concepts or final receiver AI. No chase, catch, ball flight or control transfer is implemented. The unchanged QB-only `RunningCamera` may lose the receiver along this route or during QB movement; full passing framing belongs to #16. Headless position/facing checks are not rendered visibility, a new Android build or physical #15 acceptance; the historical #14 APK below contains no route.
+
+Rollback only this uncommitted #15 unit against `7df3a4c`: remove the new Core route/test and their Unity-generated metadata; restore its owner wiring, route-specific touch tests/semantic migrations and these README changes. Preserve the complete published #14 lifecycle, controls, actors, input and camera implementation.
 
 ### Issue #14 physical acceptance
 
@@ -241,7 +263,7 @@ See the [integration evidence report](docs/movement-verification.md) for exact s
 
 ## Build and launch the Android prototype
 
-The current scene waits in Preparation with Start/Restart touch controls. This candidate was built, installed and checked in the scoped issue #14 physical acceptance round above. The commands below remain build infrastructure; each historical device report applies only to its named APK.
+The current scene waits in Preparation with Start/Restart touch controls. The earlier #14 candidate was built, installed and checked in the scoped physical acceptance round above; this #15 route candidate has not been built or installed. The commands below remain build infrastructure; each historical device report applies only to its named APK.
 
 From the repository root, with the Editor closed:
 

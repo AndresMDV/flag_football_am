@@ -10,6 +10,9 @@ namespace FlagFootball.Unity
         [SerializeField, Min(80f)] private float joystickDiameter = 240f;
         [SerializeField, Min(0f)] private float joystickPadding = 64f;
         [SerializeField, Min(0.1f)] private float joystickSensitivity = 1f;
+        [SerializeField] private Vector2 receiverCutOffset = new Vector2(0f, 3f);
+        [SerializeField] private Vector2 receiverEndOffset = new Vector2(3f, 3f);
+        [SerializeField, Min(0.1f)] private float receiverSpeed = 3f;
 
         private Renderer ground;
         private Material originalGroundMaterial, gridMaterial;
@@ -25,6 +28,7 @@ namespace FlagFootball.Unity
         private Vector3 initialReceiverPosition, heldPosition, heldScale;
         private Quaternion initialReceiverRotation, heldRotation;
         private bool resetting, resetFailed;
+        private OneCutRoute receiverRoute;
 
         public bool IsInitialized { get; private set; }
         public PlayerMovement Quarterback => quarterback;
@@ -60,12 +64,23 @@ namespace FlagFootball.Unity
             Debug.Log("BASELINE_SCENE_READY");
         }
 
+        private void Update()
+        {
+            if (!IsActive || !receiver) return;
+            receiverRoute.Step(Time.deltaTime);
+            var position = receiverRoute.Position;
+            var facing = receiverRoute.Facing;
+            receiver.SetPositionAndRotation(new Vector3(position.X, initialReceiverPosition.y, position.Y),
+                Quaternion.LookRotation(new Vector3(facing.X, 0f, facing.Y)));
+        }
+
         // False for duplicate activation, incomplete composition, reset callbacks or a failed reset.
         public bool StartAttempt()
         {
             if (!IsInitialized || resetting || resetFailed || IsActive) return false;
             joystick.ResetInput();
             lifecycle.StartAttempt();
+            receiverRoute.Start();
             quarterback.SetMovementAllowed(true);
             actionControls.RefreshState();
             return true;
@@ -79,6 +94,7 @@ namespace FlagFootball.Unity
             resetting = resetFailed = true;
             quarterback.SetMovementAllowed(false);
             lifecycle.RestartAttempt();
+            receiverRoute.Reset();
             joystick.ResetInput();
             try
             {
@@ -108,6 +124,10 @@ namespace FlagFootball.Unity
             receiver.localScale = new Vector3(0.6f, 1f, 1f);
             initialReceiverPosition = receiver.position;
             initialReceiverRotation = receiver.rotation;
+            var routeStart = new System.Numerics.Vector2(initialReceiverPosition.x, initialReceiverPosition.z);
+            receiverRoute = new OneCutRoute(routeStart,
+                routeStart + new System.Numerics.Vector2(receiverCutOffset.x, receiverCutOffset.y),
+                routeStart + new System.Numerics.Vector2(receiverEndOffset.x, receiverEndOffset.y), receiverSpeed);
 
             ball = CreateVisual("Ball", PrimitiveType.Sphere,
                 new Color(0.35f, 0.12f, 0.04f), out ballMaterial);

@@ -6,6 +6,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.TestTools.Utils;
 using UnityEngine.UI;
 using TouchPhase = UnityEngine.InputSystem.TouchPhase;
 
@@ -76,6 +77,11 @@ namespace FlagFootball.Tests.PlayMode
         {
             Assert.That(receiver.position, Is.EqualTo(receiverPosition));
             Assert.That(receiver.rotation, Is.EqualTo(receiverRotation));
+            AssertHeldBall();
+        }
+
+        private void AssertHeldBall()
+        {
             Assert.That(attempt.BallOwner, Is.EqualTo(player.transform));
             Assert.That(ball.parent, Is.EqualTo(player.transform));
             Assert.That(ball.localPosition, Is.EqualTo(ballPosition));
@@ -149,7 +155,8 @@ namespace FlagFootball.Tests.PlayMode
             AssertStopped(initial);
             yield return Touch(7, TouchPhase.Began, Vector2.left * 0.5f);
             Assert.That(player.transform.position.x, Is.LessThan(initial.x));
-            AssertPreparedActors();
+            Assert.That(receiver.position.z, Is.GreaterThan(receiverPosition.z));
+            AssertHeldBall();
             QueueAction(4, TouchPhase.Moved, controls.RestartRegion);
             yield return null;
             Assert.That(attempt.IsActive, Is.True, "Old Restart pointer cannot reset a new attempt.");
@@ -334,7 +341,8 @@ namespace FlagFootball.Tests.PlayMode
             yield return null;
             Assert.That(player.transform.position.x, Is.GreaterThan(moving.x));
             Assert.That(ball.position, Is.Not.EqualTo(initialBall));
-            AssertPreparedActors(); // Active fresh touch moves only the QB and its held ball.
+            Assert.That(receiver.position.z, Is.GreaterThan(receiverPosition.z));
+            AssertHeldBall(); // QB input and the autonomous route progress independently.
         }
 
         [UnityTest]
@@ -382,7 +390,8 @@ namespace FlagFootball.Tests.PlayMode
             AssertStopped(initial);
             yield return Touch(1, TouchPhase.Began, Vector2.left * 0.5f);
             Assert.That(player.transform.position.x, Is.LessThan(initial.x));
-            AssertPreparedActors();
+            Assert.That(receiver.position.z, Is.GreaterThan(receiverPosition.z));
+            AssertHeldBall();
         }
 
         [UnityTest]
@@ -409,6 +418,7 @@ namespace FlagFootball.Tests.PlayMode
             player.SetMoveInput(Vector2.right);
             yield return null;
             AssertStopped(initial);
+            AssertPreparedActors(); // A late route Update cannot undo failure restoration.
             attempt.Resetting -= failure;
             DisturbPreparedActors();
             Assert.That(attempt.RestartAttempt(), Is.True);
@@ -416,6 +426,62 @@ namespace FlagFootball.Tests.PlayMode
             Assert.That(attempt.StartAttempt(), Is.True);
             yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
             Assert.That(player.transform.position.x, Is.GreaterThan(initial.x));
+        }
+
+        [UnityTest]
+        public IEnumerator Route_PublicAttemptsAndTouch_ProgressCutWaitAndRepeatIndependently()
+        {
+            for (var run = 0; run < 3; run++)
+            {
+                for (var frame = 0; frame < 3; frame++) yield return null;
+                AssertPreparedActors();
+                Assert.That(attempt.StartAttempt(), Is.True);
+                var qbStart = player.transform.position;
+                yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
+                for (var frame = 0; frame < 29; frame++) yield return null;
+                Assert.That(receiver.position, Is.EqualTo(receiverPosition + Vector3.forward * 1.5f)
+                    .Using(Vector3ComparerWithEqualsOperator.Instance));
+                Assert.That(Vector3.Dot(receiver.forward, Vector3.forward), Is.GreaterThan(0.999f));
+                Assert.That(player.transform.position.x, Is.GreaterThan(qbStart.x));
+                AssertHeldBall();
+                if (run == 0) // Interrupt an actual moving route, then repeat the same start.
+                {
+                    var paused = receiver.position;
+                    attempt.enabled = false;
+                    for (var frame = 0; frame < 3; frame++) yield return null;
+                    Assert.That(receiver.position, Is.EqualTo(paused));
+                    attempt.enabled = true;
+                    Assert.That(attempt.RestartAttempt(), Is.True);
+                    AssertPreparedActors();
+                    yield return Touch(1, TouchPhase.Ended, Vector2.right * 0.5f);
+                    continue;
+                }
+                Assert.That(attempt.StartAttempt(), Is.False);
+                var qbTurn = player.transform.position;
+                yield return Touch(1, TouchPhase.Moved, Vector2.up * 0.5f);
+                for (var frame = 0; frame < 30; frame++) yield return null;
+                Assert.That(receiver.position.x, Is.GreaterThan(receiverPosition.x));
+                Assert.That(receiver.position.z, Is.EqualTo(4f).Within(0.0001f));
+                Assert.That(Vector3.Dot(receiver.forward, Vector3.right), Is.GreaterThan(0.999f));
+                Assert.That(player.transform.position.x, Is.EqualTo(qbTurn.x).Within(0.0001f));
+                Assert.That(player.transform.position.z, Is.GreaterThan(qbTurn.z));
+                for (var frame = 0; frame < 65; frame++) yield return null;
+                var endpoint = new Vector3(4.5f, receiverPosition.y, 4f);
+                Assert.That(Vector3.Distance(receiver.position, endpoint), Is.LessThan(0.0001f));
+                Assert.That(attempt.IsActive, Is.True);
+                Assert.That(attempt.StartAttempt(), Is.False);
+                var qbWaiting = player.transform.position;
+                yield return Touch(1, TouchPhase.Moved, Vector2.left * 0.5f);
+                for (var frame = 0; frame < 10; frame++) yield return null;
+                Assert.That(receiver.position, Is.EqualTo(endpoint));
+                Assert.That(Vector3.Dot(receiver.forward, Vector3.right), Is.GreaterThan(0.999f));
+                Assert.That(player.transform.position.x, Is.LessThan(qbWaiting.x));
+                AssertHeldBall();
+                Assert.That(attempt.RestartAttempt(), Is.True);
+                AssertPreparedActors();
+                AssertStopped(qbStart);
+                yield return Touch(1, TouchPhase.Ended, Vector2.left * 0.5f);
+            }
         }
 
         [UnityTest]
