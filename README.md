@@ -21,7 +21,7 @@ The runner uses Unity batch mode with Android as the active build target. It del
 
 | Path | Responsibility |
 | --- | --- |
-| `Assets/Core` | Pure C# attempt lifecycle, one-cut routes, movement, bounds, joystick gesture rules and constrained camera smoothing; engine references disabled. |
+| `Assets/Core` | Pure C# attempt lifecycle, deterministic pass flight, one-cut routes, movement, bounds, joystick gesture rules and constrained camera smoothing; engine references disabled. |
 | `Assets/Unity` | Scene initialization, movement/touch adapters, runtime visuals and camera projection/framing. May reference Core, never the reverse. |
 | `Assets/Editor` | One-time baseline asset/scene setup, plus the repeatable Android development build action. Setup refuses to overwrite existing baseline assets. |
 | `Assets/Tests/EditMode` | Movement behavior plus assembly identity and absence of Unity dependencies. |
@@ -208,6 +208,29 @@ The ARM64/IL2CPP/OpenGL ES 3 development APK built successfully with zero errors
 After instructions to press Start, move the QB toward the corners and press Restart, the user confirmed that both characters remained visible and the camera did not rotate. This is scoped human-reported visual evidence, not automated physical input or exhaustive trajectory/aspect coverage. It does not verify elevated-ball harness positions, real flight, actual moving-indicator/halo touch coverage, interruption handling or performance. Those integration boundaries remain #17, #18, #20, #21 and #22. Ignored local build/install evidence is under `TestResults/Issue16AndroidBuild/` and `Builds/Android/build-report.json`; historical APK observations below remain separately scoped.
 
 Rollback #16 against `3068d96`: restore the camera/bootstrap changes, the explicit running-mode fixture selections and these README edits; remove `PassingCameraTests.cs` with its generated metadata. Preserve the published route, lifecycle, touch controls and original running implementation.
+
+### Deterministic flight model (#23, first slice of #17)
+
+`PassFlight` is an engine-free release snapshot, **not yet wired to the visible scene ball**. Construct it with release/receiver world positions, the receiver's current planar X/Z velocity (`System.Numerics.Vector2`), quality and field bounds. It never reads a live actor or future route geometry. [#24](https://github.com/AndresMDV/flag_football_am/issues/24) owns visible launch, incomplete-attempt state, restart and actual-flight framing; #17 remains incomplete until that integration is delivered.
+
+| Internal constructor setting / policy | Initial value |
+| --- | --- |
+| Nominal planar speed / minimum aim time | 8 world units/s / 0.2 seconds; short throws may travel more slowly to respect the minimum |
+| Quality range factor | `0.5 + 0.5 × quality`, for normalized quality 0 through 1; no randomness |
+| Arc height above release-to-target chord | 2.5 world units |
+| Ground contact center Y | 0.09, matching the prepared ball's vertical half-size above ground Y=0 |
+| Field limits in model checks | Supplied X/Z bounds -10 to +10; exit means ball-center crossing, not final match rules |
+| Terminal precedence | Earliest analytic ground contact or field boundary; ground wins exact ties |
+
+Full quality chooses the earliest reachable intercept of the sampled constant velocity at or after the minimum time. Unreachable motion and invalid/nonfinite configuration are rejected explicitly. Lower quality shortens the planned X/Z displacement; its aim time is `max(minimumTime, shortenedDistance / speed)`. No future cut/stop knowledge improves the aim. The ball reaches the sampled receiver height at aim time, then continues the **same** parabola until contact: with `u = seconds / AimTime`, `y = releaseY + (receiverY - releaseY)u + 4 × arcHeight × u × (1-u)`. X/Z continue linearly, including beyond the aim point; there is no homing, bounce or catch.
+
+`Sample(seconds)` observes the frozen trajectory without changing time. `Step(deltaTime)` advances `Elapsed`; `Position` samples that elapsed time and `End` derives from it. Both observation and advancement clamp at `EndTime`, so large frames cannot skip an earlier field exit or resume after ground contact. The event time is public for future chronological catch/ground/exit resolution, not a callback-order policy. A new attempt will use a new flight instance; this slice does not add scene reset workers.
+
+Focused verification: `python3 scripts/run_unity_tests.py --platform EditMode --test-filter PassFlightTests` passed **22/22**, zero failures/skips, Editor exit 0. `StationaryIntercept_ArcReachesTargetBeforeGround`, `MovingIntercept_UsesOnlySampledCurrentMotion`, `Quality_ProgressivelyUnderthrowsWithoutRandomness` and `TranslatedReleaseTargetAndField_PreserveRelativeQualityAndFlight` cover aim, arc, deterministic quality and nonzero release coordinates. `LaterRouteCutOrStop_CannotHomeTheReleasedPass` uses the actual public `OneCutRoute`. `TimePartitionsAndLargeSteps_MatchSamplingAndFreezeAtFirstEvent`, `FieldCrossingBeforeGround_StopsOnFirstBoundary` and `GroundBoundaryTie_UsesDeterministicGroundPrecedence` cover partitions and first-event ordering, alongside coincident/edge release, fast/equal-speed approach, unreachable motion and invalid-input checks. Focused report: `TestResults/20261118T152836776823Z/EditMode.xml` (ignored).
+
+Full regression: `python3 scripts/run_unity_tests.py` passed **62 EditMode + 34 PlayMode**, zero failures/skips, both Editor exits 0. All 74 previous named cases remain passing alongside the 22 new flight cases. Reports: `TestResults/20261118T152948311796Z/{EditMode,PlayMode}.xml` (ignored). Source-asset checks covered 86 files with zero errors/warnings.
+
+Runtime flight harness: **N/A in this core-only slice**, visible ball/camera integration belongs to #24. No new APK, physical flight observation or independent review is asserted; historical #16 Pixel evidence is unchanged. Rollback this unit against `5fc42c2`: remove `PassFlight.cs`, `PassFlightTests.cs` and their Unity-generated metadata, and restore these README changes. Existing scene/lifecycle/route/input/camera behavior is untouched.
 
 ### Issue #14 physical acceptance
 
