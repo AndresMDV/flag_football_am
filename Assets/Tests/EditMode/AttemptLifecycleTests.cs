@@ -16,6 +16,20 @@ namespace FlagFootball.Tests.EditMode
             Assert.That(attempt.State, Is.EqualTo(AttemptState.Active));
         }
 
+        [Test]
+        public void Incomplete_OnlyEndsActiveAndRequiresRestartBeforeStart()
+        {
+            var attempt = new AttemptLifecycle();
+            Assert.That(attempt.MarkIncomplete(), Is.False);
+            attempt.StartAttempt();
+            Assert.That(attempt.MarkIncomplete(), Is.True);
+            Assert.That(attempt.State, Is.EqualTo(AttemptState.Incomplete));
+            Assert.That(attempt.MarkIncomplete(), Is.False);
+            Assert.That(attempt.StartAttempt(), Is.False);
+            Assert.That(attempt.RestartAttempt(), Is.True);
+            Assert.That(attempt.StartAttempt(), Is.True);
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void Restart_IsRepeatableAndRequiresExplicitStart(bool initiallyActive)

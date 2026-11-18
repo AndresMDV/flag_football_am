@@ -13,6 +13,9 @@ namespace FlagFootball.Unity
         [SerializeField] private Vector2 receiverCutOffset = new Vector2(0f, 3f);
         [SerializeField] private Vector2 receiverEndOffset = new Vector2(3f, 3f);
         [SerializeField, Min(0.1f)] private float receiverSpeed = 3f;
+        [SerializeField, Min(0.1f)] private float passSpeed = 8f;
+        [SerializeField, Min(0.1f)] private float passArcHeight = 2.5f;
+        [SerializeField, Min(0.01f)] private float minimumPassTime = 0.2f;
 
         private Renderer ground;
         private Material originalGroundMaterial, gridMaterial;
@@ -30,6 +33,7 @@ namespace FlagFootball.Unity
         private Quaternion initialReceiverRotation, heldRotation;
         private bool resetting, resetFailed;
         private OneCutRoute receiverRoute;
+        private PassFlight flight;
 
         public bool IsInitialized { get; private set; }
         public PlayerMovement Quarterback => quarterback;
@@ -37,7 +41,17 @@ namespace FlagFootball.Unity
         public Transform Ball => ball;
         // Possession observes direct QB attachment; detached visuals have no owner.
         public Transform BallOwner => ball && ball.parent == quarterback.transform ? quarterback.transform : null;
-        public bool IsActive => lifecycle.State == AttemptState.Active;
+        public AttemptState State => lifecycle.State;
+        public bool IsActive => State == AttemptState.Active;
+        public FlightEnd FlightOutcome => flight?.End ?? FlightEnd.None;
+        public Vector3 ReceiverVelocity
+        {
+            get
+            {
+                var v = IsActive && receiverRoute != null ? receiverRoute.Velocity : System.Numerics.Vector2.Zero;
+                return new Vector3(v.X, 0f, v.Y);
+            }
+        }
         // Synchronous, registration-ordered, fail-fast callbacks while prepared and movement-blocked.
         public event Action Resetting;
 
@@ -70,17 +84,56 @@ namespace FlagFootball.Unity
         private void Update()
         {
             if (!IsActive || !receiver) return;
-            receiverRoute.Step(Time.deltaTime);
+            var step = Time.deltaTime;
+            if (flight != null)
+            {
+                var before = flight.Elapsed;
+                flight.Step(step);
+                step = (float)(flight.Elapsed - before);
+                var p = flight.Position;
+                ball.position = new Vector3(p.X, p.Y, p.Z);
+            }
+            receiverRoute.Step(step);
             var position = receiverRoute.Position;
             var facing = receiverRoute.Facing;
             receiver.SetPositionAndRotation(new Vector3(position.X, initialReceiverPosition.y, position.Y),
                 Quaternion.LookRotation(new Vector3(facing.X, 0f, facing.Y)));
+            if (FlightOutcome == FlightEnd.None) return;
+            lifecycle.MarkIncomplete();
+            quarterback.SetMovementAllowed(false);
+            joystick.ResetInput();
+            actionControls.RefreshState();
+        }
+
+        // Public release boundary; invalid calls never detach the held ball.
+        public bool LaunchPass(Transform selectedReceiver, float quality)
+        {
+            if (!IsInitialized || !isActiveAndEnabled || resetting || resetFailed || !IsActive || !ground ||
+                !selectedReceiver || selectedReceiver != receiver || flight != null ||
+                BallOwner != quarterback.transform || !float.IsFinite(quality) || quality < 0f || quality > 1f) return false;
+            var origin = ball.position;
+            var target = receiver.position;
+            var velocity = ReceiverVelocity;
+            var bounds = ground.bounds;
+            PassFlight candidate;
+            try
+            {
+                candidate = new PassFlight(new System.Numerics.Vector3(origin.x, origin.y, origin.z),
+                    new System.Numerics.Vector3(target.x, target.y, target.z),
+                    new System.Numerics.Vector2(velocity.x, velocity.z), quality,
+                    new System.Numerics.Vector2(bounds.min.x, bounds.min.z), new System.Numerics.Vector2(bounds.max.x, bounds.max.z),
+                    passSpeed, passArcHeight, bounds.max.y + ball.GetComponent<Renderer>().bounds.extents.y, minimumPassTime);
+            }
+            catch (ArgumentException) { return false; }
+            ball.SetParent(null, true);
+            flight = candidate;
+            return true;
         }
 
         // False for duplicate activation, incomplete composition, reset callbacks or a failed reset.
         public bool StartAttempt()
         {
-            if (!IsInitialized || resetting || resetFailed || IsActive) return false;
+            if (!IsInitialized || resetting || resetFailed || State != AttemptState.Preparation) return false;
             joystick.ResetInput();
             lifecycle.StartAttempt();
             receiverRoute.Start();
@@ -97,6 +150,7 @@ namespace FlagFootball.Unity
             resetting = resetFailed = true;
             quarterback.SetMovementAllowed(false);
             lifecycle.RestartAttempt();
+            flight = null;
             receiverRoute.Reset();
             joystick.ResetInput();
             try

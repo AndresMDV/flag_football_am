@@ -10,6 +10,8 @@ namespace FlagFootball.Core
         private double distance;
         private bool started;
 
+        public Vector2 Velocity => !started || distance == totalLength ? Vector2.Zero :
+            (distance <= firstLength ? firstDirection : lastDirection) * (float)speed;
         public Vector2 Position { get; private set; }
         public Vector2 Facing { get; private set; } = Vector2.UnitY;
 

@@ -82,7 +82,7 @@ namespace FlagFootball.Unity
         {
             if (startLabel) startLabel.text = "Start | " +
                 (!isActiveAndEnabled || !hasFocus || paused || !owner || !owner.IsInitialized ? "Unavailable" :
-                    owner.IsActive ? "Active" : "Preparation");
+                    owner.State.ToString());
         }
 
         private bool FreshInside(EnhancedTouch touch, RectTransform region) =>

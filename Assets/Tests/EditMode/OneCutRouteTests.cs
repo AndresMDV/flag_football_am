@@ -15,27 +15,33 @@ namespace FlagFootball.Tests.EditMode
         {
             var route = Create();
             route.Step(10f);
+            Assert.That(route.Velocity, Is.EqualTo(Vector2.Zero));
             Assert.That(route.Position, Is.EqualTo(new Vector2(1.5f, 1f)));
             for (var run = 0; run < 2; run++)
             {
                 Assert.That(route.Facing, Is.EqualTo(Vector2.UnitY));
                 Assert.That(route.Start(), Is.True);
+                Assert.That(route.Velocity, Is.EqualTo(Vector2.UnitY * 3f));
                 route.Step(0.5f);
                 Assert.That(route.Position, Is.EqualTo(new Vector2(1.5f, 2.5f)));
                 Assert.That(route.Start(), Is.False);
                 route.Step(0.5f);
                 Assert.That(route.Position, Is.EqualTo(new Vector2(1.5f, 4f)));
                 Assert.That(route.Facing, Is.EqualTo(Vector2.UnitY));
+                Assert.That(route.Velocity, Is.EqualTo(Vector2.UnitY * 3f));
                 route.Step(0.25f);
                 Assert.That(route.Position, Is.EqualTo(new Vector2(2.25f, 4f)));
                 Assert.That(route.Facing, Is.EqualTo(Vector2.UnitX));
+                Assert.That(route.Velocity, Is.EqualTo(Vector2.UnitX * 3f));
                 route.Step(100f);
                 Assert.That(route.Position, Is.EqualTo(new Vector2(4.5f, 4f)));
                 Assert.That(route.Start(), Is.False);
                 route.Step(100f);
                 Assert.That(route.Position, Is.EqualTo(new Vector2(4.5f, 4f)));
                 Assert.That(route.Facing, Is.EqualTo(Vector2.UnitX));
+                Assert.That(route.Velocity, Is.EqualTo(Vector2.Zero));
                 route.Reset();
+                Assert.That(route.Velocity, Is.EqualTo(Vector2.Zero));
                 route.Step(10f);
                 Assert.That(route.Position, Is.EqualTo(new Vector2(1.5f, 1f)));
             }

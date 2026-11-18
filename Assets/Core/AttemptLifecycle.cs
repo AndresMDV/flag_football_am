@@ -1,6 +1,6 @@
 namespace FlagFootball.Core
 {
-    public enum AttemptState { Preparation, Active }
+    public enum AttemptState { Preparation, Active, Incomplete }
 
     public sealed class AttemptLifecycle
     {
@@ -8,16 +8,23 @@ namespace FlagFootball.Core
 
         public bool StartAttempt()
         {
-            if (State == AttemptState.Active) return false;
+            if (State != AttemptState.Preparation) return false;
             State = AttemptState.Active;
+            return true;
+        }
+
+        public bool MarkIncomplete()
+        {
+            if (State != AttemptState.Active) return false;
+            State = AttemptState.Incomplete;
             return true;
         }
 
         public bool RestartAttempt()
         {
-            var wasActive = State == AttemptState.Active;
+            var changed = State != AttemptState.Preparation;
             State = AttemptState.Preparation;
-            return wasActive;
+            return changed;
         }
     }
 }

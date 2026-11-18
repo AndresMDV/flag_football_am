@@ -107,7 +107,7 @@ After `IsInitialized` becomes true in `Start`, the touch controls and external c
 - `RestartAttempt()` returns true on successful completion, including while already prepared. It closes the movement gate, publishes Preparation and cancels the joystick before invoking `Resetting` subscribers in registration order, then restores both original actor poses and QB possession. Start and nested Restart are rejected during callbacks. A new explicit Start and a new `Began` gesture are required afterward.
 - `Resetting` is the small integration boundary for future charge/flight/control/camera adapters. The owner resets its receiver route before these callbacks. Subscribers must reset synchronously/idempotently and unsubscribe when disposed. Exceptions propagate immediately (later callbacks are skipped); pose restoration and reentrancy cleanup still run, and Start stays blocked until a successful Restart retry.
 
-The engine-free `AttemptLifecycle.State` exposes Preparation/Active; its action booleans report whether state changed. The scene's Restart boolean instead reports transaction completion. Preparation rejects both touch and direct movement requests; disabling/re-enabling movement cannot bypass it. Focus/pause still neutralize input only: interruption-to-attempt reset belongs to #21.
+The engine-free `AttemptLifecycle.State` exposes Preparation/Active/Incomplete; its action booleans report whether state changed. The scene's Restart boolean instead reports transaction completion. Preparation rejects both touch and direct movement requests; disabling/re-enabling movement cannot bypass it. Focus/pause still neutralize input only: interruption-to-attempt reset belongs to #21.
 
 Focused verification: `AttemptLifecycleTests` exercises public transitions; `TouchJoystickTests.Attempt_` exercises actual scene preparation, fresh Start, duplicate Start, reset ordering/reentrancy/failure, pose restoration and stale held/moved/released touch rejection. Existing movement/touch/camera fixtures explicitly resolve the QB and Start when needed; complete renderer-edge framing assertions remain. These are headless virtual-touch checks, not physical touch, usability, Android-player or lock/unlock evidence. Historical APK evidence below is unchanged.
 
@@ -133,7 +133,7 @@ Scene-owner destruction releases both primitives (even a detached ball) and thei
 
 Actor-composition full regression: `python3 scripts/run_unity_tests.py --platform EditMode` passed **33/33** and `--platform PlayMode` passed **25/25**, zero failures/skips, Editor exits 0. All 56 previous case fullnames remain passing; both new actor checks pass. Ignored reports: `TestResults/20261117T125003194727Z/EditMode.xml` and `TestResults/20261117T125016992114Z/PlayMode.xml`. These are automated scene/virtual-touch checks, not new Android or physical-device evidence.
 
-The #14 delivery added the Start/Restart controls below; #15 adds the receiver route and #16 adds passing framing. Charge, flight, catch, control transfer and interruption-to-attempt policy remain absent. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
+The #14 delivery added the Start/Restart controls below; #15 adds the receiver route and #16 adds passing framing. Charge, catch, control transfer and interruption-to-attempt policy remain absent; #24 below now adds visible flight. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
 
 #### Start/Restart touch controls
 
@@ -211,7 +211,7 @@ Rollback #16 against `3068d96`: restore the camera/bootstrap changes, the explic
 
 ### Deterministic flight model (#23, first slice of #17)
 
-`PassFlight` is an engine-free release snapshot, **not yet wired to the visible scene ball**. Construct it with release/receiver world positions, the receiver's current planar X/Z velocity (`System.Numerics.Vector2`), quality and field bounds. It never reads a live actor or future route geometry. [#24](https://github.com/AndresMDV/flag_football_am/issues/24) owns visible launch, incomplete-attempt state, restart and actual-flight framing; #17 remains incomplete until that integration is delivered.
+`PassFlight` is an engine-free release snapshot, now used by the visible launch below. Construct it with release/receiver world positions, the receiver's current planar X/Z velocity (`System.Numerics.Vector2`), quality and field bounds. It never reads a live actor or future route geometry. [#24](https://github.com/AndresMDV/flag_football_am/issues/24) supplies the scene integration; both slices are required to complete #17.
 
 | Internal constructor setting / policy | Initial value |
 | --- | --- |
@@ -230,7 +230,29 @@ Focused verification: `python3 scripts/run_unity_tests.py --platform EditMode --
 
 Full regression: `python3 scripts/run_unity_tests.py` passed **62 EditMode + 34 PlayMode**, zero failures/skips, both Editor exits 0. All 74 previous named cases remain passing alongside the 22 new flight cases. Reports: `TestResults/20261118T152948311796Z/{EditMode,PlayMode}.xml` (ignored). Source-asset checks covered 86 files with zero errors/warnings.
 
-Runtime flight harness: **N/A in this core-only slice**, visible ball/camera integration belongs to #24. No new APK, physical flight observation or independent review is asserted; historical #16 Pixel evidence is unchanged. Rollback this unit against `5fc42c2`: remove `PassFlight.cs`, `PassFlightTests.cs` and their Unity-generated metadata, and restore these README changes. Existing scene/lifecycle/route/input/camera behavior is untouched.
+At #23 delivery the runtime flight harness was **N/A for that core-only slice**; #24 below now integrates it. No new APK, physical flight observation or independent review is asserted; historical #16 Pixel evidence is unchanged. Rollback the core unit against `5fc42c2` after removing its consumers: remove `PassFlight.cs`, `PassFlightTests.cs` and their Unity-generated metadata, and restore its README changes. The core unit alone left scene/lifecycle/route/input/camera behavior untouched.
+
+### Visible pass launch and incomplete attempts (#24, completing #17 scope)
+
+Call `SceneBootstrap.LaunchPass(attempt.Receiver, quality)` through test/Editor code until #18 adds the touch gesture. It returns false without changing possession for invalid targets/quality, disabled or uninitialized owners, non-Active attempts, reset/failure latches, unpossessed/airborne balls or invalid flight configuration. A valid call snapshots the actual QB-held ball position and receiver position/current `ReceiverVelocity`, then detaches the same visible ball preserving its world pose/scale. Later QB movement, receiver cuts/stops and route completion cannot steer it; no keyboard-only player mode was added.
+
+| Internal value on `SceneBootstrap` | Initial value / source |
+| --- | --- |
+| `passSpeed` / `passArcHeight` / `minimumPassTime` | 8 units/s / 2.5 units above chord / 0.2 seconds; serialized, using the #23 quality formula |
+| Field / ground contact | Actual ground renderer X/Z bounds (-10 to +10); ground top plus actual ball renderer vertical extent (0.09 initially) |
+| Receiver velocity | Current route leg × 3 units/s; incoming direction exactly at the cut, zero before Start, at endpoint waiting or outside Active; no future cut prediction |
+
+The scene's single `Update` advances the flight and only its consumed time of receiver motion, freezes at the first ground/field-center event and publishes `State == Incomplete` plus `FlightOutcome`. QB movement/input are neutralized; the existing label reads **Start | Incomplete** and Start cannot bypass manual Restart. Restart discards the flight before reset callbacks and restores both poses, QB-held ball and prepared camera in the existing `finally`, including callback failure; no old worker/callback can complete a new attempt. With catching deferred to #19, even a well-aimed ball currently finishes incomplete rather than being caught.
+
+Verification: focused `PassLaunchTests` passed **5/5**; `python3 scripts/run_unity_tests.py` passed **63 EditMode + 39 PlayMode**, zero failures/skips, Editor exits 0. All 96 previous named cases remain passing, with one new lifecycle case and five scene cases. Asset checks: 88 files, zero errors/warnings. Reports: `TestResults/20261118T154803522421Z/{EditMode,PlayMode}.xml` (ignored).
+
+- `Launch_RejectsInvalidCallsAndSamplesCurrentReleaseWithoutHoming`: actual moved-QB/current-receiver release, possession/quality/target/rethrow rejection, fixed visible trajectory, incomplete label and stopped actors.
+- `QualityCutStopAndWaitingTarget_UseActualVisibleFixedFlights`: quality 0/0.5/1 before the cut, before endpoint stop and while waiting; actual undershoot and cut/stop misses, with no random catch.
+- `LargeFrame_StopsRouteAtFirstBallEventRatherThanFrameEnd`: a two-second frame respects the earlier contact time for ball and route progression.
+- `MidflightRestartAndFailedReset_RestorePreparationWithoutStaleCompletion`: normal/failed mid-flight reset, synchronous prepared camera/possession recovery, fail-closed retry and no completion leaking into later attempts.
+- `ActualFlightsAcrossQbBoundsAndLandscapeAspects_StayFramedThroughGroundAndFieldExit`: public QB movement to center/all edges/corners, actual ground and moving-lead field exits at 16:9, 20:9 and 2.5, full renderer/halo/depth visibility and fixed orientation; no QB restriction or running-camera test weakening.
+
+No new APK, physical flight/touch or independent review is claimed. #18/#19/#20/#21/#22 still own charging, catches, running transition, interruption policy and matching-build Pixel integration. Rollback this ten-path unit against `c52dedc`, removing `PassLaunchTests.cs` with its generated metadata and restoring lifecycle/route/scene/label, test/reference and README edits; preserve the published `PassFlight` core and previous movement/camera foundation.
 
 ### Issue #14 physical acceptance
 
