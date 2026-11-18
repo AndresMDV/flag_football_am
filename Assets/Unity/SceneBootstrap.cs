@@ -21,6 +21,7 @@ namespace FlagFootball.Unity
         private readonly AttemptLifecycle lifecycle = new AttemptLifecycle();
         private TouchJoystick joystick;
         private AttemptControls actionControls;
+        private RunningCamera cameraDriver;
         private Vector3 initialPosition;
         private Quaternion initialRotation;
         private Transform receiver, ball;
@@ -58,7 +59,9 @@ namespace FlagFootball.Unity
             joystick = TouchJoystick.Create(quarterback, joystickDiameter, joystickPadding, joystickSensitivity);
             AddFieldGrid();
             CreatePreparedActors();
-            Camera.main.GetComponent<RunningCamera>().RefreshSubjectVisuals();
+            cameraDriver = Camera.main.GetComponent<RunningCamera>();
+            cameraDriver.RefreshSubjectVisuals();
+            cameraDriver.ConfigurePassing(this);
             IsInitialized = true;
             actionControls = AttemptControls.Create(this, joystick.SafeArea);
             Debug.Log("BASELINE_SCENE_READY");
@@ -109,6 +112,7 @@ namespace FlagFootball.Unity
                 ball.localPosition = heldPosition;
                 ball.localRotation = heldRotation;
                 ball.localScale = heldScale;
+                if (cameraDriver) cameraDriver.RestorePreparedFrame();
                 resetting = false;
                 actionControls.RefreshState();
             }

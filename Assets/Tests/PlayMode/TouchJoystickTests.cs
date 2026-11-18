@@ -704,6 +704,7 @@ namespace FlagFootball.Tests.PlayMode
         [UnityTest]
         public IEnumerator IntegratedTouch_MovesFacesAndDrivesCameraThroughTurnAndRelease()
         {
+            Camera.main.GetComponent<RunningCamera>().UseRunningFrame();
             Assert.That(attempt.StartAttempt(), Is.True);
             var view = Camera.main;
             var start = view.transform.position;
@@ -732,6 +733,7 @@ namespace FlagFootball.Tests.PlayMode
         [UnityTest]
         public IEnumerator IntegratedTouch_BoundsFramingAndFreshInputSurviveInterruption()
         {
+            Camera.main.GetComponent<RunningCamera>().UseRunningFrame();
             Assert.That(attempt.StartAttempt(), Is.True);
             var rotation = Camera.main.transform.rotation;
             yield return Touch(1, TouchPhase.Began, Vector2.right);

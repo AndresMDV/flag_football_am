@@ -1,6 +1,6 @@
 # Flag Football Android Prototype
 
-A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap prepares an explicitly bound QB, receiver and visible QB-held ball, with movement blocked until Start. Start/Restart controls drive repeatable attempts: the joystick controls the QB independently of an automatic one-cut receiver route. The running camera still follows only the QB. Automated route checks do not extend the historical Pixel evidence below to this candidate.
+A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap prepares an explicitly bound QB, receiver and visible QB-held ball, with movement blocked until Start. Start/Restart controls drive repeatable attempts: the joystick controls the QB independently of an automatic one-cut receiver route. A fixed-orientation passing camera keeps both actors, the ball and reserved indicator space visible. Automated route/framing checks do not extend the historical Pixel evidence below to this candidate.
 
 ## Run the checks
 
@@ -127,13 +127,13 @@ The earlier lifecycle unit can be rolled back separately after removing dependen
 
 The receiver has no joystick movement adapter. Neither added visual has a collider or rigidbody. Preparation keeps both actors still under joystick input; Active now runs the independent receiver route below while the joystick moves the QB and its attached ball. The initial poses and ball parent-relative pose/scale are captured once. Every Restart, including repeated prepared resets and callback failures, restores them in the existing `finally` block; detached/mutated balls are reattached. Callback ordering, blocked reentrancy and fail-closed retry behavior are unchanged.
 
-After composition, Bootstrap explicitly refreshes the running camera's cached QB-child renderers so the ball participates in existing full-renderer edge framing. The nearby receiver is initially framed at 16:9, 20:9 and 2.5 aspect. Keeping the receiver visible throughout unrestricted QB movement is not promised; passing-camera behavior belongs to #16. Renderer-corner projection checks establish geometric containment, not rendered pixels or physical readability.
+After composition, Bootstrap explicitly refreshes the camera's cached QB-child renderers so the ball participates in full-renderer framing, then selects the passing view described under #16 below. Renderer-corner projection checks establish geometric containment, not rendered pixels or physical readability.
 
 Scene-owner destruction releases both primitives (even a detached ball) and their materials. The surviving running camera skips destroyed cached visuals and keeps framing the QB; `PreparedActors_OwnerOnlyDestructionKeepsCameraUpdating` verifies owner-only cleanup across subsequent camera frames. Repeated Restart reuses the same objects. `BootstrapSceneTests.PreparedActors_ExposeDistinctRolesHeldBallAndInitialFraming` and `PreparedActors_RepeatedSceneUnloadDestroysOwnedVisualsAndMaterials` cover roles, initial geometry and repeated scene/reset cleanup. Existing `TouchJoystickTests.Attempt_` cases also disturb both actor poses and ball attachment/local pose/scale, verify reset/failure recovery and exercise fresh virtual touch independently of receiver route progress; prepared pose checks remain exact.
 
 Actor-composition full regression: `python3 scripts/run_unity_tests.py --platform EditMode` passed **33/33** and `--platform PlayMode` passed **25/25**, zero failures/skips, Editor exits 0. All 56 previous case fullnames remain passing; both new actor checks pass. Ignored reports: `TestResults/20261117T125003194727Z/EditMode.xml` and `TestResults/20261117T125016992114Z/PlayMode.xml`. These are automated scene/virtual-touch checks, not new Android or physical-device evidence.
 
-The #14 delivery added the Start/Restart controls below; #15 adds the receiver route. Charge, flight, catch, control transfer, passing camera and interruption-to-attempt policy remain absent. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
+The #14 delivery added the Start/Restart controls below; #15 adds the receiver route and #16 adds passing framing. Charge, flight, catch, control transfer and interruption-to-attempt policy remain absent. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
 
 #### Start/Restart touch controls
 
@@ -171,9 +171,43 @@ Restart stops the model before reset callbacks and restores the original receive
 
 `OneCutRouteTests` covers public start/cut/end/wait/reset/repeat, cut overshoot/time partitions, custom geometry/speed/facing and invalid inputs. `TouchJoystickTests.Route_PublicAttemptsAndTouch_ProgressCutWaitAndRepeatIndependently` drives actual public attempts and virtual QB touches through a moving reset, two complete runs, the cut, endpoint waiting and independent QB turns. Existing prepared/reset/ball-ownership, touch freshness, camera bounds and owner-cleanup checks remain.
 
-This is **lab scaffolding**, not any of the six final playbook concepts or final receiver AI. No chase, catch, ball flight or control transfer is implemented. The unchanged QB-only `RunningCamera` may lose the receiver along this route or during QB movement; full passing framing belongs to #16. Headless position/facing checks are not rendered visibility, a new Android build or physical #15 acceptance; the historical #14 APK below contains no route.
+This is **lab scaffolding**, not any of the six final playbook concepts or final receiver AI. No chase, catch, ball flight or control transfer is implemented. At #15 delivery the QB-only camera could lose the receiver; #16 below now frames both actors throughout the route and permitted QB movement. Headless position/facing checks are not rendered visibility, a new Android build or physical #15 acceptance; the historical #14 APK below contains no route.
 
 Rollback only this uncommitted #15 unit against `7df3a4c`: remove the new Core route/test and their Unity-generated metadata; restore its owner wiring, route-specific touch tests/semantic migrations and these README changes. Preserve the complete published #14 lifecycle, controls, actors, input and camera implementation.
+
+### Passing frame (#16)
+
+Preparation and Active use the same fixed 60-degree pitch, zero yaw/roll and orthographic projection. `RunningCamera` projects full QB-child, receiver and ball renderer AABBs into camera space. It also reserves an elevated envelope spanning QB, receiver and current ball X/Z, expanded by 0.2 units, from ground Y=0 to Y=4.2 (ball-center ceiling 4 plus radius allowance). This is a conservative **test envelope**, not implemented flight or an intercept prediction.
+
+| Passing setting | Initial value / assumption |
+| --- | --- |
+| QB / field / route | Unchanged: QB centers -8 to +8 X/Z; 20 × 20 ground; route `(1.5,1)` → `(1.5,4)` → `(4.5,4)` at 3 units/s |
+| Minimum orthographic half-height / response | 3.5 units / existing 8 per second; serialized on Main Camera |
+| Flight-center ceiling / halo radius | 4 units / 96 reference pixels; serialized on Main Camera |
+| Indicator anchor | Receiver position + world up × 1.2; reserve a 192-pixel-diameter disk at 1080-pixel screen height |
+| Usable screen area | `Screen.safeArea`, inset 4% left/right/top; reserve bottom max(36% of safe height, 384/1080 screen height) for existing controls |
+| Halo allowance | Extra 96/1080 vertical and 96/(1080 × aspect) horizontal viewport inset around all framing subjects; conservative space around the receiver anchor |
+| Camera-space depth | -30 units; preserves near/far visibility throughout the calibrated envelope |
+
+Translation and shrinking zoom converge exponentially. Expansion and position clamps take priority whenever smoothing would crop a subject; normal-movement tests bound per-frame changes. Passing may show background outside the ground: retaining the running view's all-ground viewport would conflict with this wider frame. **No QB restriction, field resize, route change or movement-axis rotation was introduced.** A nonpositive usable framing region raises an explicit configuration error rather than silently clipping subjects.
+
+For verification before flight exists, call `RunningCamera.SetBallFramingTestInput(worldPosition, normalizedSafeViewport)`. It detaches and positions the **actual visible ball**, with no velocity, launch, collision, possession transfer or trajectory simulation. Input must be finite; test safe rectangles must stay within the viewport and be at least 0.5 wide / 0.7 high. Restart clears this override, restores QB possession and synchronously restores the prepared camera after both actor poses, including failed-reset cleanup. `UseRunningFrame()` explicitly selects the unchanged bounded QB-only algorithm for regressions; there is no automatic catch transition or player-facing camera control.
+
+Verification through `python3 scripts/run_unity_tests.py`:
+
+- `PassingCameraTests.PreparationRouteAndAllQbExtremes_ReserveHaloAcrossLandscapeAspects`: preparation, actual route through cut/end while QB moves, all four edges/corners via public movement, unchanged bounds/axes, full visual/envelope containment, reserved halo, smooth translation/zoom, at 16:9, 20:9 and 2.5. Checks the projected QB body exceeds 20 × 32 pixels at reference height 1080 (observed minima: 20.64 × 35.08 pixels); this is a geometric placeholder floor, **not physical readability acceptance**.
+- `ElevatedBallHarnessAndInsetSafeArea_RestartRestoresPreparedFrame`: actual elevated ball corners at Y=4, a ground-near position, representative inset safe area `(0.04,0.03,0.92,0.94)`, active restart/possession and exact prepared camera recovery at every aspect.
+- `InvalidHarnessInput_DoesNotDetachOrMoveTheBall`: invalid coordinates/safe-area rejection without state mutation.
+
+All original running-camera renderer/ground-corner and virtual-touch integration assertions remain; those fixtures now explicitly select running mode. Full regression: **40 EditMode + 34 PlayMode**, zero failures/skips. Unity-generated metadata and the source-asset checker are included. Final reports: `TestResults/20261118T134454726414Z/{EditMode,PlayMode}.xml` (ignored). No independent subagent review is asserted.
+
+#### Scoped Pixel verification
+
+The ARM64/IL2CPP/OpenGL ES 3 development APK built successfully with zero errors/warnings and was installed on the Pixel 6a, Android API 36. SHA-256: `42db1cd8c5662e9a3edb666dabeae296d1477c5ab6fbfd2262e8214e778cf6c6`; APK size: 79,315,701 bytes. The installed APK hash matched the build output; cold launch returned `Status: ok` and the live player emitted `BASELINE_SCENE_READY`. Build inputs matched the tested source candidate at HEAD `3068d96` plus the uncommitted #16 implementation; subsequent changes only record this evidence.
+
+After instructions to press Start, move the QB toward the corners and press Restart, the user confirmed that both characters remained visible and the camera did not rotate. This is scoped human-reported visual evidence, not automated physical input or exhaustive trajectory/aspect coverage. It does not verify elevated-ball harness positions, real flight, actual moving-indicator/halo touch coverage, interruption handling or performance. Those integration boundaries remain #17, #18, #20, #21 and #22. Ignored local build/install evidence is under `TestResults/Issue16AndroidBuild/` and `Builds/Android/build-report.json`; historical APK observations below remain separately scoped.
+
+Rollback #16 against `3068d96`: restore the camera/bootstrap changes, the explicit running-mode fixture selections and these README edits; remove `PassingCameraTests.cs` with its generated metadata. Preserve the published route, lifecycle, touch controls and original running implementation.
 
 ### Issue #14 physical acceptance
 
@@ -211,7 +245,7 @@ Rollback boundary for #10: remove `JoystickGesture`, `TouchJoystick` and their t
 
 ## Bounded running camera (#11)
 
-The orthographic running view follows in `LateUpdate` after player movement. Pitch is fixed; yaw and roll remain zero regardless of character facing. Orthographic projection keeps apparent size constant across the field, trading perspective depth scaling for predictable edge framing. There is no passing view, camera-control UI or automatic view transition.
+The orthographic running view follows in `LateUpdate` after player movement. Pitch is fixed; yaw and roll remain zero regardless of character facing. Orthographic projection keeps apparent size constant across the field, trading perspective depth scaling for predictable edge framing. The passing mode above now shares this adapter; this section describes explicit running mode. There is no camera-control UI or automatic view transition.
 
 | Internal setting on Main Camera's `RunningCamera` | Initial value |
 | --- | --- |
@@ -263,7 +297,7 @@ See the [integration evidence report](docs/movement-verification.md) for exact s
 
 ## Build and launch the Android prototype
 
-The current scene waits in Preparation with Start/Restart touch controls. The earlier #14 candidate was built, installed and checked in the scoped physical acceptance round above; this #15 route candidate has not been built or installed. The commands below remain build infrastructure; each historical device report applies only to its named APK.
+The current scene waits in Preparation with Start/Restart touch controls. The #16 passing-frame APK was built, installed and checked in the scoped Pixel verification above; earlier #14 observations remain separately scoped to that APK. The commands below remain build infrastructure; each device report applies only to its named APK.
 
 From the repository root, with the Editor closed:
 

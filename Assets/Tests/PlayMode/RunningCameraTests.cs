@@ -28,6 +28,7 @@ namespace FlagFootball.Tests.PlayMode
             player = attempt.Quarterback;
             Assert.That(attempt.StartAttempt(), Is.True);
             view = Camera.main;
+            view.GetComponent<RunningCamera>().UseRunningFrame();
             field = GameObject.Find("Ground").GetComponent<Renderer>();
             visuals = player.GetComponentsInChildren<Renderer>();
         }
