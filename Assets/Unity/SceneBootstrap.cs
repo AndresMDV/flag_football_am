@@ -21,6 +21,8 @@ namespace FlagFootball.Unity
         [SerializeField] private Vector3 passIndicatorOffset = Vector3.up * 1.2f;
         [SerializeField, Range(0.01f, 0.99f)] private float orangeChargeThreshold = 0.5f;
         [SerializeField, Min(1f)] private float readyHaloScale = 1.1f;
+        [SerializeField, Min(0.01f)] private float chargeDuration = 1f;
+        [SerializeField, Min(1f)] private float chargeCancelDistance = 80f;
 
         private Renderer ground;
         private Material originalGroundMaterial, gridMaterial;
@@ -85,8 +87,9 @@ namespace FlagFootball.Unity
             cameraDriver.ConfigurePassing(this);
             IsInitialized = true;
             actionControls = AttemptControls.Create(this, joystick.SafeArea);
-            PassIndicator.Create(this, cameraDriver, joystick.SafeArea, joystick.CircleSprite,
+            var indicator = PassIndicator.Create(this, cameraDriver, joystick.SafeArea, joystick.CircleSprite,
                 passButtonDiameter, passHaloDiameter, passIndicatorOffset, orangeChargeThreshold, readyHaloScale);
+            ChargedPassInput.Create(this, indicator, chargeDuration, chargeCancelDistance);
             Debug.Log("BASELINE_SCENE_READY");
         }
 

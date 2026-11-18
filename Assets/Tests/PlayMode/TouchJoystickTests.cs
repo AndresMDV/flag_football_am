@@ -12,7 +12,7 @@ using TouchPhase = UnityEngine.InputSystem.TouchPhase;
 
 namespace FlagFootball.Tests.PlayMode
 {
-    public sealed class TouchJoystickTests
+    public sealed partial class TouchJoystickTests
     {
         private SceneBootstrap attempt;
         private Touchscreen screen;
@@ -54,6 +54,9 @@ namespace FlagFootball.Tests.PlayMode
             Assert.That(joystick, Is.Not.Null);
             joystick.SendMessage("OnApplicationFocus", true);
             joystick.SendMessage("OnApplicationPause", false);
+            var passInput = Object.FindFirstObjectByType<ChargedPassInput>();
+            passInput.SendMessage("OnApplicationFocus", true);
+            passInput.SendMessage("OnApplicationPause", false);
             pad = GameObject.Find("MovementJoystick").GetComponent<RectTransform>();
             Canvas.ForceUpdateCanvases();
         }

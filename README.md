@@ -2,6 +2,8 @@
 
 A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap prepares an explicitly bound QB, receiver and visible QB-held ball, with movement blocked until Start. Start/Restart controls drive repeatable attempts: the joystick controls the QB independently of an automatic one-cut receiver route. A fixed-orientation passing camera keeps both actors, the ball and reserved indicator space visible. Automated route/framing checks do not extend the historical Pixel evidence below to this candidate.
 
+To pass, press **Start**, hold the receiver's **PASS** indicator, then release at the desired charge color. Green stays ready while held; a downward swipe cancels without throwing. The left joystick can move the QB at the same time. Catching is not implemented yet, so a launched pass eventually becomes incomplete until Restart.
+
 ## Run the checks
 
 1. Install Unity **6000.3.28f1** for Apple Silicon with Android Build Support, SDK/NDK Tools, and OpenJDK. Complete account and license prompts yourself.
@@ -133,7 +135,7 @@ Scene-owner destruction releases both primitives (even a detached ball) and thei
 
 Actor-composition full regression: `python3 scripts/run_unity_tests.py --platform EditMode` passed **33/33** and `--platform PlayMode` passed **25/25**, zero failures/skips, Editor exits 0. All 56 previous case fullnames remain passing; both new actor checks pass. Ignored reports: `TestResults/20261117T125003194727Z/EditMode.xml` and `TestResults/20261117T125016992114Z/PlayMode.xml`. These are automated scene/virtual-touch checks, not new Android or physical-device evidence.
 
-The #14 delivery added the Start/Restart controls below; #15 adds the receiver route and #16 adds passing framing. Charged touch input, catch, control transfer and interruption-to-attempt policy remain absent; #24 below now adds visible flight. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
+The #14 delivery added the Start/Restart controls below; #15 adds the receiver route and #16 adds passing framing. Catch, control transfer and interruption-to-attempt policy remain absent; #24 and #27 below provide visible flight and charged touch input. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
 
 #### Start/Restart touch controls
 
@@ -234,7 +236,7 @@ At #23 delivery the runtime flight harness was **N/A for that core-only slice**;
 
 ### Visible pass launch and incomplete attempts (#24, completing #17 scope)
 
-Call `SceneBootstrap.LaunchPass(attempt.Receiver, quality)` through test/Editor code until #18 adds the touch gesture. It returns false without changing possession for invalid targets/quality, disabled or uninitialized owners, non-Active attempts, reset/failure latches, unpossessed/airborne balls or invalid flight configuration. A valid call snapshots the actual QB-held ball position and receiver position/current `ReceiverVelocity`, then detaches the same visible ball preserving its world pose/scale. Later QB movement, receiver cuts/stops and route completion cannot steer it; no keyboard-only player mode was added.
+Call `SceneBootstrap.LaunchPass(attempt.Receiver, quality)` directly through test/Editor code or use the charged touch gesture below. It returns false without changing possession for invalid targets/quality, disabled or uninitialized owners, non-Active attempts, reset/failure latches, unpossessed/airborne balls or invalid flight configuration. A valid call snapshots the actual QB-held ball position and receiver position/current `ReceiverVelocity`, then detaches the same visible ball preserving its world pose/scale. Later QB movement, receiver cuts/stops and route completion cannot steer it; no keyboard-only player mode was added.
 
 | Internal value on `SceneBootstrap` | Initial value / source |
 | --- | --- |
@@ -256,7 +258,7 @@ No new APK, physical flight/touch or independent review is claimed. #18/#19/#20/
 
 ### Charge and swipe model (#25, first slice of #18)
 
-`PassCharge` is a pure C# ownership/quality model, **not yet driven by runtime touch input**. It returns execution quality, never a reception probability or a launch side effect. #26 below supplies presentation and #27 will supply the real EnhancedTouch-to-launch path; #18 remains incomplete until all three deliveries are complete. Existing scene controls and public flight behavior are unchanged.
+`PassCharge` is the pure C# ownership/quality model now consumed by `ChargedPassInput` below. It returns execution quality, never a reception probability or a launch side effect. #26 supplies presentation and #27 connects actual Input System touch events; all three slices are required for #18.
 
 | Constructor setting / convention | Initial value |
 | --- | --- |
@@ -270,17 +272,17 @@ No new APK, physical flight/touch or independent review is claimed. #18/#19/#20/
 - `Release(pointer, position)` yields current quality **once**, then clears ownership/progress. A returned zero is a valid early release; `null` means no release (foreign, canceled, reset or duplicate). Full quality remains captured indefinitely without cycling, penalty or auto-release.
 - `Cancel(pointer)` requires the owner; `Reset()` is unconditional/idempotent lifecycle authority. Both clear progress. Only another explicit Begin can capture afterward. Configuration/position/time validation precedes mutation; duration/threshold must be finite and positive, coordinates finite and delta time nonnegative/finite.
 
-The later adapter must gate attempt state/possession, accept only a fresh Began inside the available indicator, correlate device/touch identity and touch start time, reject stale/reused-key events after restart, and convert positions to the same stable units. The model deliberately does not infer these engine facts or own the joystick, widget, launch or whole-attempt interruption policy.
+The adapter below gates attempt state/possession, accepts only a fresh Began inside the available indicator, correlates device/touch identity and touch start time, rejects stale/reused-key events after restart, and converts positions to the same stable units. The model deliberately does not infer these engine facts or own the joystick, widget, launch or whole-attempt interruption policy.
 
 Focused verification: `python3 scripts/run_unity_tests.py --platform EditMode --test-filter PassChargeTests` passed **21/21**, zero failures/skips, Editor exit 0 (`TestResults/20261118T161754579430Z/EditMode.xml`, ignored). `EarlyMidReadyRelease_EmitsCurrentQualityExactlyOnce` covers zero/early/mid/full release; `TimePartitions_UseConfiguredDurationRatherThanFrameCount` covers custom duration/partitions; `SustainedReadyAndStationaryFinger_DoNotCycleCancelOrAutoRelease` proves retained readiness. `OtherPointerAndRepeatedBegin_CannotStealAdvanceCancelOrRelease`, `DownwardSwipe_UsesOriginalFingerPositionAndCancelsAtThreshold`, `ReleaseFinalPosition_UsesConfiguredSwipeThreshold` and the reset/opaque-key/invalid-input cases cover ownership, cancellation and repeat safety. These are public model checks, not actual device or moving-widget evidence.
 
 Full regression: `python3 scripts/run_unity_tests.py` passed **84 EditMode + 39 PlayMode**, zero failures/skips, both Editor exits 0. All 102 previous named cases remain passing alongside 21 new charge cases. Asset checks: 92 files, zero errors/warnings. Reports: `TestResults/20261118T162024485083Z/{EditMode,PlayMode}.xml` (ignored).
 
-At #25 delivery, the runtime charge harness was **N/A for that core-only slice**; #26 below supplies presentation, while actual touch capture remains #27. No new APK, physical charge feel or independent review is claimed. Rollback the core unit against `dc1a65f` after removing its consumers: remove `PassCharge.cs`, `PassChargeTests.cs` and their Unity-generated metadata, and restore its README edits; preserve the earlier scene/flight/input/camera foundation.
+At #25 delivery, the runtime charge harness was **N/A for that core-only slice**; #26 supplies presentation and #27 below now supplies actual touch capture. No new APK, physical charge feel or independent review is claimed. Rollback the core unit against `dc1a65f` after removing its consumers: remove `PassCharge.cs`, `PassChargeTests.cs` and their Unity-generated metadata, and restore its README edits; preserve the earlier scene/flight/input/camera foundation.
 
 ### Moving receiver indicator and halo (#26, presentation slice of #18)
 
-The active QB passing view now shows a **presentation-only** `PassIndicator` above the receiver. `SetProgress(quality)` accepts finite normalized execution quality; it never advances a timer or launches. Its public `Button`/`Halo` RectTransforms provide the actual presentation geometry for tests and the later touch adapter. `IsAvailable` requires visible UI, an active passing camera and `SceneBootstrap.CanLaunchPass`, the shared state/possession eligibility used by launch (which still validates target, quality and flight configuration separately). Preparation, airborne/incomplete/non-QB possession, disabled owners/cameras and explicit running mode hide/reset the UI. There is still no touch-charge handler until #27.
+The active QB passing view now shows a **presentation-only** `PassIndicator` above the receiver. `SetProgress(quality)` accepts finite normalized execution quality; it never advances a timer or launches. Its public `Button`/`Halo` RectTransforms provide the actual presentation geometry for tests and the later touch adapter. `IsAvailable` requires visible UI, an active passing camera and `SceneBootstrap.CanLaunchPass`, the shared state/possession eligibility used by launch (which still validates target, quality and flight configuration separately). Preparation, airborne/incomplete/non-QB possession, disabled owners/cameras and explicit running mode hide/reset the UI. The touch-charge handler is the separate #27 adapter below.
 
 | Internal setting on `SceneBootstrap` / existing canvas | Initial value |
 | --- | --- |
@@ -301,7 +303,34 @@ Verification: focused `PassIndicatorTests` passed **4/4**; `python3 scripts/run_
 - `MovingRouteAndAllQbEdges_FullHaloFitsInsetSafeAreaAndAvoidsExistingControls` drives the actual route and public QB movement through center/all edges/corners. Real WorldSpace canvas rects at 1920/2400/2700 × 1080 use matching camera aspects and 64/32-unit insets, checking full halo containment, target projection and separation from joystick/Start/Restart. These are consistent reference-layout simulations, not the headless batch Screen or physical Pixel dimensions.
 - `UnfitSafeArea_ReportsCalibrationConflictWithoutClampingActors` verifies the explicit configuration failure and recovery without moving the receiver.
 
-No new APK, physical readability/charge-feel, real touch capture or independent review is claimed. #27 owns touch-to-flight behavior and #22 the matching-build physical calibration. Rollback this eight-path unit against `987b933`, removing `PassIndicator.cs`/`PassIndicatorTests.cs` with generated metadata and restoring Bootstrap eligibility/composition, camera mode/sprite accessors and README edits; preserve the published charge/flight models and previous input/camera behavior.
+The #26 presentation slice alone did not verify real touch capture, supplied by #27 below. No new APK, physical readability/charge-feel or independent review is claimed; #22 owns matching-build physical calibration. Rollback this eight-path unit against `987b933`, removing `PassIndicator.cs`/`PassIndicatorTests.cs` with generated metadata and restoring Bootstrap eligibility/composition, camera mode/sprite accessors and README edits; preserve the published charge/flight models and previous input/camera behavior.
+
+### Captured touch charging and launch (#27, completing #18 scope)
+
+`ChargedPassInput` connects the existing indicator, `PassCharge` and `LaunchPass` through **Input System 1.20.1 EnhancedTouch**, with `activeInputHandler: 1` unchanged. There is no new action asset, EventSystem module, legacy Input call or keyboard-only mode. Bootstrap creates one adapter under the owned indicator/canvas. Its execution order -90 follows Start/Restart (-110) and joystick (-100), before actor updates; the indicator still projects after the camera in LateUpdate.
+
+| Internal setting on `SceneBootstrap` / input policy | Value |
+| --- | --- |
+| `chargeDuration` / `chargeCancelDistance` | 1 second / 80 full-canvas reference units, height-matched to 1080 |
+| Begin region | Available circular 96-unit button, not the larger halo or transparent square corners; outside Began cannot drag in |
+| Ownership | Combined device/touch key plus captured touch start time; only that gesture advances/releases |
+| Freshness | Began start time strictly newer than the last input reset; restart/cancel/return invalidates older held/moved/released input |
+
+The owning finger stays captured outside the moving indicator. Finger positions are converted through the **full canvas**, never the receiver-relative button: camera/route motion cannot create a downward swipe. Owner time advances once per polled frame, including release; the latest normalized quality is committed once through `LaunchPass`. A nullable zero remains a valid early release. Green holds indefinitely, while early red/orange release uses the existing deterministic underthrow. The joystick's owner/input is never changed by charge processing.
+
+A downward displacement reaching 80 units, including displacement first observed on release, cancels without launch or attempt restart. Canceled input, disappearing owner/device, disabled controls, focus loss and pause clear only the charge and require another fresh press. Focus and pause are tracked independently. Preparation, airborne/incomplete/non-QB ownership and unavailable presentation cannot begin/commit a QB throw. Resetting is synchronous and EnhancedTouch enable/disable and event subscriptions are balanced. Whole-attempt interruption reset still belongs to #21; no catch/control transfer is implemented.
+
+Verification: `python3 scripts/run_unity_tests.py --platform PlayMode --test-filter 'TouchJoystickTests.Charge_'` passed **5/5** with virtual Touchscreen events through the actual Input System path. Full regression passed **84 EditMode + 48 PlayMode**, zero failures/skips, Editor exits 0, preserving all 127 prior named cases. The shared fixture is extended via a partial class, without duplicating setup or weakening previous tests.
+
+- `Charge_RedOrangeGreenRelease_UsesCurrentQualityAndActualFlight`: visible colors/halo size, early/mid/full release, actual release-time trajectory and duplicate/rethrow rejection.
+- `Charge_MovingIndicatorAndJoystick_IgnoreOtherFingersAndDeviceWithSameTouchId`: simultaneous movement, stationary captured finger while marker/camera move, same touch ID on another device, third-finger interference, sustained green, full halo containment and continued QB movement after release.
+- `Charge_OutsidePressAndDownSwipe_CannotThrowWithoutAnotherFreshPress`: halo-only/transparent-corner presses, drag-in rejection, lateral capture, explicit downward cancel, canceled/final-downward releases and fresh recovery without attempt restart.
+- `Charge_RestartAndInvalidPossessionPhases_RejectHeldMovedReleasedInput`: preparation, same-frame Restart/Start with visible UI, stale held/moved/released gesture rejection, non-QB possession, airborne/incomplete gates and fresh reused touch IDs.
+- `Charge_InputInterruptionsCancelOrLoseOwner_RequireFreshTouchWithoutAbortingAttempt`: focus, pause with focus returning first, disabled input, canceled touch and device removal; blocked/new/old events cannot leak a throw, while fresh touches recover.
+
+Final reports: `TestResults/20261118T201100217471Z/{EditMode,PlayMode}.xml` (ignored). Source-asset checks covered 100 files with zero errors/warnings.
+
+These are automated input/layout/lifecycle simulations, not physical charge-feel, rendered-pixel or lock/unlock proof. The development APK `6ca5acbe4924eb1ab4d0f3463bd2889c2bb8fe44c543fdc3bcf463fadbad7b27` (61,704,547 bytes) built with zero errors/warnings and was installed/hash-verified on Pixel 6a, API 36. Physical feedback rejected the moving button placement and requested fixed PASS, a visual L1 marker and charge-only screen-edge feedback; charge acceptance remains pending. This checkpoint is not approval of the old UI, and no independent review is claimed. Rollback this seven-path unit against `49c61b3`, removing `ChargedPassInput.cs`, the new partial charge-test file and their generated metadata, and restoring Bootstrap wiring/settings, fixture extensions and README edits; preserve the published model, indicator, joystick and flight foundation.
 
 ### Issue #14 physical acceptance
 
