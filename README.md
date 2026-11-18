@@ -256,7 +256,7 @@ No new APK, physical flight/touch or independent review is claimed. #18/#19/#20/
 
 ### Charge and swipe model (#25, first slice of #18)
 
-`PassCharge` is a pure C# ownership/quality model, **not yet connected to UI or touch input**. It returns execution quality, never a reception probability or a launch side effect. #26 will supply the moving indicator/halo and #27 the real EnhancedTouch-to-launch path; #18 remains incomplete until all three deliveries are complete. Existing scene controls and public flight behavior are unchanged.
+`PassCharge` is a pure C# ownership/quality model, **not yet driven by runtime touch input**. It returns execution quality, never a reception probability or a launch side effect. #26 below supplies presentation and #27 will supply the real EnhancedTouch-to-launch path; #18 remains incomplete until all three deliveries are complete. Existing scene controls and public flight behavior are unchanged.
 
 | Constructor setting / convention | Initial value |
 | --- | --- |
@@ -276,7 +276,32 @@ Focused verification: `python3 scripts/run_unity_tests.py --platform EditMode --
 
 Full regression: `python3 scripts/run_unity_tests.py` passed **84 EditMode + 39 PlayMode**, zero failures/skips, both Editor exits 0. All 102 previous named cases remain passing alongside 21 new charge cases. Asset checks: 92 files, zero errors/warnings. Reports: `TestResults/20261118T162024485083Z/{EditMode,PlayMode}.xml` (ignored).
 
-Runtime charge harness: **N/A in this core-only slice**, presentation/input integration belongs to #26/#27. No new APK, physical charge feel or independent review is claimed. Rollback against `dc1a65f`: remove `PassCharge.cs`, `PassChargeTests.cs` and their Unity-generated metadata, and restore these README edits; preserve all published scene/flight/input/camera code.
+At #25 delivery, the runtime charge harness was **N/A for that core-only slice**; #26 below supplies presentation, while actual touch capture remains #27. No new APK, physical charge feel or independent review is claimed. Rollback the core unit against `dc1a65f` after removing its consumers: remove `PassCharge.cs`, `PassChargeTests.cs` and their Unity-generated metadata, and restore its README edits; preserve the earlier scene/flight/input/camera foundation.
+
+### Moving receiver indicator and halo (#26, presentation slice of #18)
+
+The active QB passing view now shows a **presentation-only** `PassIndicator` above the receiver. `SetProgress(quality)` accepts finite normalized execution quality; it never advances a timer or launches. Its public `Button`/`Halo` RectTransforms provide the actual presentation geometry for tests and the later touch adapter. `IsAvailable` requires visible UI, an active passing camera and `SceneBootstrap.CanLaunchPass`, the shared state/possession eligibility used by launch (which still validates target, quality and flight configuration separately). Preparation, airborne/incomplete/non-QB possession, disabled owners/cameras and explicit running mode hide/reset the UI. There is still no touch-charge handler until #27.
+
+| Internal setting on `SceneBootstrap` / existing canvas | Initial value |
+| --- | --- |
+| `passButtonDiameter` / `passHaloDiameter` | 96 / 192 reference units; maximum radius matches the passing frame's 96-unit reservation |
+| `passIndicatorOffset` | Receiver position + world up × 1.2 |
+| `orangeChargeThreshold` | 0.5; red → orange below the threshold, orange → green above it |
+| `readyHaloScale` | 1.1 × button diameter: 105.6 units at full quality, leaving a visible ring |
+| Appearance / scaling | Halo alpha 0.5; button shares its hue; black bold 24-unit `PASS` label; existing height-matched 1920 × 1080 canvas |
+
+`LateUpdate` runs after camera framing (execution order 100). Viewport coordinates map through the shared safe-area anchors into canvas reference space, rather than clamping the marker away from its receiver. The entire maximum halo must fit; impossible calibration hides it and throws an explicit error. No QB bound, route or camera orientation is restricted. Progress one remains green indefinitely without launching, and invalid progress cannot corrupt the current display.
+
+Restart synchronously clears progress/hides the presentation through `Resetting`; invalid states also clear queued progress. The component is a child of the owned touch canvas, unsubscribes when disabled and borrows the joystick's circle sprite. It creates no extra texture/material and never destroys the shared sprite itself; owner teardown destroys the UI and releases the sprite/texture once.
+
+Verification: focused `PassIndicatorTests` passed **4/4**; `python3 scripts/run_unity_tests.py` passed **84 EditMode + 43 PlayMode**, zero failures/skips, Editor exits 0. All 123 previous named cases remain passing; asset checks covered 96 files with zero errors/warnings. Reports: `TestResults/20261118T164957507538Z/{EditMode,PlayMode}.xml` (ignored).
+
+- `CoreProgress_ProducesRedOrangeGreenAndSustainedReadyWithoutLaunching` observes real image colors, halo/button sizes, label fit and retained QB possession while driving public progress from `PassCharge`.
+- `PhaseChangesRestartAndOwnerDisposal_HideResetAndReleaseSharedUi` covers availability, possession/flight/incomplete/running/disable gates, reset, single-instance composition and actual shared sprite/texture cleanup.
+- `MovingRouteAndAllQbEdges_FullHaloFitsInsetSafeAreaAndAvoidsExistingControls` drives the actual route and public QB movement through center/all edges/corners. Real WorldSpace canvas rects at 1920/2400/2700 × 1080 use matching camera aspects and 64/32-unit insets, checking full halo containment, target projection and separation from joystick/Start/Restart. These are consistent reference-layout simulations, not the headless batch Screen or physical Pixel dimensions.
+- `UnfitSafeArea_ReportsCalibrationConflictWithoutClampingActors` verifies the explicit configuration failure and recovery without moving the receiver.
+
+No new APK, physical readability/charge-feel, real touch capture or independent review is claimed. #27 owns touch-to-flight behavior and #22 the matching-build physical calibration. Rollback this eight-path unit against `987b933`, removing `PassIndicator.cs`/`PassIndicatorTests.cs` with generated metadata and restoring Bootstrap eligibility/composition, camera mode/sprite accessors and README edits; preserve the published charge/flight models and previous input/camera behavior.
 
 ### Issue #14 physical acceptance
 

@@ -16,6 +16,11 @@ namespace FlagFootball.Unity
         [SerializeField, Min(0.1f)] private float passSpeed = 8f;
         [SerializeField, Min(0.1f)] private float passArcHeight = 2.5f;
         [SerializeField, Min(0.01f)] private float minimumPassTime = 0.2f;
+        [SerializeField, Min(1f)] private float passButtonDiameter = 96f;
+        [SerializeField, Min(1f)] private float passHaloDiameter = 192f;
+        [SerializeField] private Vector3 passIndicatorOffset = Vector3.up * 1.2f;
+        [SerializeField, Range(0.01f, 0.99f)] private float orangeChargeThreshold = 0.5f;
+        [SerializeField, Min(1f)] private float readyHaloScale = 1.1f;
 
         private Renderer ground;
         private Material originalGroundMaterial, gridMaterial;
@@ -44,6 +49,8 @@ namespace FlagFootball.Unity
         public AttemptState State => lifecycle.State;
         public bool IsActive => State == AttemptState.Active;
         public FlightEnd FlightOutcome => flight?.End ?? FlightEnd.None;
+        public bool CanLaunchPass => IsInitialized && isActiveAndEnabled && !resetting && !resetFailed &&
+            IsActive && ground && receiver && quarterback && flight == null && BallOwner == quarterback.transform;
         public Vector3 ReceiverVelocity
         {
             get
@@ -78,6 +85,8 @@ namespace FlagFootball.Unity
             cameraDriver.ConfigurePassing(this);
             IsInitialized = true;
             actionControls = AttemptControls.Create(this, joystick.SafeArea);
+            PassIndicator.Create(this, cameraDriver, joystick.SafeArea, joystick.CircleSprite,
+                passButtonDiameter, passHaloDiameter, passIndicatorOffset, orangeChargeThreshold, readyHaloScale);
             Debug.Log("BASELINE_SCENE_READY");
         }
 
@@ -108,9 +117,8 @@ namespace FlagFootball.Unity
         // Public release boundary; invalid calls never detach the held ball.
         public bool LaunchPass(Transform selectedReceiver, float quality)
         {
-            if (!IsInitialized || !isActiveAndEnabled || resetting || resetFailed || !IsActive || !ground ||
-                !selectedReceiver || selectedReceiver != receiver || flight != null ||
-                BallOwner != quarterback.transform || !float.IsFinite(quality) || quality < 0f || quality > 1f) return false;
+            if (!CanLaunchPass || !selectedReceiver || selectedReceiver != receiver ||
+                !float.IsFinite(quality) || quality < 0f || quality > 1f) return false;
             var origin = ball.position;
             var target = receiver.position;
             var velocity = ReceiverVelocity;

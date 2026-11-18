@@ -21,6 +21,7 @@ namespace FlagFootball.Unity
         private SceneBootstrap passingOwner;
         private Renderer[] passingVisuals;
         private bool passingFrame;
+        public bool IsPassingFrame => isActiveAndEnabled && passingFrame && passingOwner;
         private Rect? testSafeViewport;
         [SerializeField, Min(0.1f)] private float passingHalfHeight = 3.5f;
         [SerializeField, Min(0f)] private float flightHeight = 4f;
