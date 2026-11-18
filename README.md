@@ -21,7 +21,7 @@ The runner uses Unity batch mode with Android as the active build target. It del
 
 | Path | Responsibility |
 | --- | --- |
-| `Assets/Core` | Pure C# attempt lifecycle, deterministic pass flight, one-cut routes, movement, bounds, joystick gesture rules and constrained camera smoothing; engine references disabled. |
+| `Assets/Core` | Pure C# attempt lifecycle, deterministic pass flight/charging, one-cut routes, movement, bounds, joystick gesture rules and constrained camera smoothing; engine references disabled. |
 | `Assets/Unity` | Scene initialization, movement/touch adapters, runtime visuals and camera projection/framing. May reference Core, never the reverse. |
 | `Assets/Editor` | One-time baseline asset/scene setup, plus the repeatable Android development build action. Setup refuses to overwrite existing baseline assets. |
 | `Assets/Tests/EditMode` | Movement behavior plus assembly identity and absence of Unity dependencies. |
@@ -133,7 +133,7 @@ Scene-owner destruction releases both primitives (even a detached ball) and thei
 
 Actor-composition full regression: `python3 scripts/run_unity_tests.py --platform EditMode` passed **33/33** and `--platform PlayMode` passed **25/25**, zero failures/skips, Editor exits 0. All 56 previous case fullnames remain passing; both new actor checks pass. Ignored reports: `TestResults/20261117T125003194727Z/EditMode.xml` and `TestResults/20261117T125016992114Z/PlayMode.xml`. These are automated scene/virtual-touch checks, not new Android or physical-device evidence.
 
-The #14 delivery added the Start/Restart controls below; #15 adds the receiver route and #16 adds passing framing. Charge, catch, control transfer and interruption-to-attempt policy remain absent; #24 below now adds visible flight. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
+The #14 delivery added the Start/Restart controls below; #15 adds the receiver route and #16 adds passing framing. Charged touch input, catch, control transfer and interruption-to-attempt policy remain absent; #24 below now adds visible flight. Roll back only receiver/ball composition/reset/cleanup, the camera refresh/lifetime guard, the actor tests, added actor assertions in the touch fixture and this documentation against this unit's pre-unit snapshot; preserve both earlier lifecycle/input deliveries.
 
 #### Start/Restart touch controls
 
@@ -253,6 +253,30 @@ Verification: focused `PassLaunchTests` passed **5/5**; `python3 scripts/run_uni
 - `ActualFlightsAcrossQbBoundsAndLandscapeAspects_StayFramedThroughGroundAndFieldExit`: public QB movement to center/all edges/corners, actual ground and moving-lead field exits at 16:9, 20:9 and 2.5, full renderer/halo/depth visibility and fixed orientation; no QB restriction or running-camera test weakening.
 
 No new APK, physical flight/touch or independent review is claimed. #18/#19/#20/#21/#22 still own charging, catches, running transition, interruption policy and matching-build Pixel integration. Rollback this ten-path unit against `c52dedc`, removing `PassLaunchTests.cs` with its generated metadata and restoring lifecycle/route/scene/label, test/reference and README edits; preserve the published `PassFlight` core and previous movement/camera foundation.
+
+### Charge and swipe model (#25, first slice of #18)
+
+`PassCharge` is a pure C# ownership/quality model, **not yet connected to UI or touch input**. It returns execution quality, never a reception probability or a launch side effect. #26 will supply the moving indicator/halo and #27 the real EnhancedTouch-to-launch path; #18 remains incomplete until all three deliveries are complete. Existing scene controls and public flight behavior are unchanged.
+
+| Constructor setting / convention | Initial value |
+| --- | --- |
+| `duration` | 1 second; normalized quality is accumulated owner time divided by duration, capped at 1 |
+| `cancelDistance` | 80 coordinate units; intended as height-matched reference units at 1080 screen height, not unscaled physical pixels |
+| Finger coordinates | Fixed coordinate frame with Y increasing upward; never relative to the moving indicator/camera |
+| Pointer key | Opaque `long`, including zero/negative values; the adapter may compose device/touch identity |
+
+- `Begin(pointer, position)` captures one owner and original finger position. Repeated Begin while captured cannot reset progress/origin. Only matching-key `Advance(pointer, deltaTime)`, `Move`, `Cancel` or `Release` can affect that gesture; idle/foreign advancement cannot precharge the next one.
+- `Move` cancels when original Y minus current Y reaches the downward threshold, inclusively. Upward/lateral movement alone does not cancel; `Release` also checks its final position so a missing intermediate Move cannot accidentally throw. No receiver/indicator geometry enters this calculation.
+- `Release(pointer, position)` yields current quality **once**, then clears ownership/progress. A returned zero is a valid early release; `null` means no release (foreign, canceled, reset or duplicate). Full quality remains captured indefinitely without cycling, penalty or auto-release.
+- `Cancel(pointer)` requires the owner; `Reset()` is unconditional/idempotent lifecycle authority. Both clear progress. Only another explicit Begin can capture afterward. Configuration/position/time validation precedes mutation; duration/threshold must be finite and positive, coordinates finite and delta time nonnegative/finite.
+
+The later adapter must gate attempt state/possession, accept only a fresh Began inside the available indicator, correlate device/touch identity and touch start time, reject stale/reused-key events after restart, and convert positions to the same stable units. The model deliberately does not infer these engine facts or own the joystick, widget, launch or whole-attempt interruption policy.
+
+Focused verification: `python3 scripts/run_unity_tests.py --platform EditMode --test-filter PassChargeTests` passed **21/21**, zero failures/skips, Editor exit 0 (`TestResults/20261118T161754579430Z/EditMode.xml`, ignored). `EarlyMidReadyRelease_EmitsCurrentQualityExactlyOnce` covers zero/early/mid/full release; `TimePartitions_UseConfiguredDurationRatherThanFrameCount` covers custom duration/partitions; `SustainedReadyAndStationaryFinger_DoNotCycleCancelOrAutoRelease` proves retained readiness. `OtherPointerAndRepeatedBegin_CannotStealAdvanceCancelOrRelease`, `DownwardSwipe_UsesOriginalFingerPositionAndCancelsAtThreshold`, `ReleaseFinalPosition_UsesConfiguredSwipeThreshold` and the reset/opaque-key/invalid-input cases cover ownership, cancellation and repeat safety. These are public model checks, not actual device or moving-widget evidence.
+
+Full regression: `python3 scripts/run_unity_tests.py` passed **84 EditMode + 39 PlayMode**, zero failures/skips, both Editor exits 0. All 102 previous named cases remain passing alongside 21 new charge cases. Asset checks: 92 files, zero errors/warnings. Reports: `TestResults/20261118T162024485083Z/{EditMode,PlayMode}.xml` (ignored).
+
+Runtime charge harness: **N/A in this core-only slice**, presentation/input integration belongs to #26/#27. No new APK, physical charge feel or independent review is claimed. Rollback against `dc1a65f`: remove `PassCharge.cs`, `PassChargeTests.cs` and their Unity-generated metadata, and restore these README edits; preserve all published scene/flight/input/camera code.
 
 ### Issue #14 physical acceptance
 
