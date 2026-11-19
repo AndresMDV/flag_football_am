@@ -76,7 +76,7 @@ namespace FlagFootball.Unity
                     {
                         charge.Move(key, position);
                         if (!charge.IsCaptured) ResetInput();
-                        else indicator.SetProgress(charge.Quality);
+                        else indicator.SetProgress(charge.Quality, true);
                     }
                 }
                 else if (!charge.IsCaptured && indicator.IsAvailable && touch.phase == TouchPhase.Began &&
@@ -84,7 +84,7 @@ namespace FlagFootball.Unity
                 {
                     foundOwner = charge.Begin(key, FingerPosition(touch.screenPosition));
                     ownerStartTime = touch.startTime;
-                    indicator.SetProgress(0f);
+                    indicator.SetProgress(0f, true);
                 }
             }
             if (charge.IsCaptured && !foundOwner) ResetInput();

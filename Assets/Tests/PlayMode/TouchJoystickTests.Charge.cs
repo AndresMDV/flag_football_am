@@ -26,11 +26,34 @@ namespace FlagFootball.Tests.PlayMode
             InputSystem.QueueStateEvent(device ?? screen, new TouchState { touchId = id, phase = phase, position = position });
             yield return null;
         }
+        private void AssertBorder(bool visible)
+        {
+            var border = PassView.transform.Find("ChargeBorder");
+            Assert.That(border, Is.Not.Null, "Charge-only edge feedback must exist.");
+            Assert.That(border.gameObject.activeInHierarchy, Is.EqualTo(visible));
+            if (!visible) return;
+            var images = border.GetComponentsInChildren<Image>();
+            Assert.That(images.Length, Is.EqualTo(8));
+            var color = PassView.Button.GetComponent<Image>().color;
+            var center = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+            foreach (var image in images)
+            {
+                Assert.That(new Color(image.color.r, image.color.g, image.color.b), Is.EqualTo(color));
+                Assert.That(image.color.a, Is.InRange(0.01f, 0.3f));
+                Assert.That(image.raycastTarget, Is.False);
+                Assert.That(RectTransformUtility.RectangleContainsScreenPoint(image.rectTransform, center), Is.False);
+            }
+            foreach (var edge in new[] { new Vector2(1f, center.y), new Vector2(Screen.width - 1f, center.y),
+                new Vector2(center.x, 1f), new Vector2(center.x, Screen.height - 1f) })
+                Assert.That(System.Array.Exists(images, image =>
+                    RectTransformUtility.RectangleContainsScreenPoint(image.rectTransform, edge)), Is.True);
+        }
         private IEnumerator ChargeReady()
         {
             Assert.That(attempt.StartAttempt(), Is.True);
             yield return null;
             Assert.That(PassView.IsAvailable, Is.True);
+            AssertBorder(false);
         }
 
         [UnityTest]
@@ -43,6 +66,7 @@ namespace FlagFootball.Tests.PlayMode
                 var point = PassPoint;
                 yield return PassTouch(2, TouchPhase.Began, point);
                 for (var i = 0; i < frames; i++) yield return null;
+                AssertBorder(true);
                 var color = PassView.Button.GetComponent<Image>().color;
                 Assert.That(color.b, Is.Zero);
                 if (frames == 0) Assert.That(color, Is.EqualTo(Color.red));
@@ -58,6 +82,7 @@ namespace FlagFootball.Tests.PlayMode
                     groundHeight: ground.max.y + ball.GetComponent<Renderer>().bounds.extents.y);
                 yield return PassTouch(2, TouchPhase.Ended, point);
                 Assert.That(attempt.BallOwner, Is.Null);
+                AssertBorder(false);
                 var predicted = expected.Sample(Time.deltaTime);
                 Assert.That(Vector3.Distance(ball.position, new Vector3(predicted.X, predicted.Y, predicted.Z)), Is.LessThan(0.002f));
                 yield return PassTouch(2, TouchPhase.Ended, point);
@@ -73,6 +98,8 @@ namespace FlagFootball.Tests.PlayMode
             yield return ChargeReady();
             yield return Touch(1, TouchPhase.Began, Vector2.right * 0.5f);
             var start = player.transform.position;
+            var marker = PassView.transform.Find("ReceiverMarker");
+            var markerStart = RectTransformUtility.WorldToScreenPoint(null, marker.position);
             var point = PassPoint;
             yield return PassTouch(2, TouchPhase.Began, point);
             var other = InputSystem.AddDevice<Touchscreen>();
@@ -84,7 +111,9 @@ namespace FlagFootball.Tests.PlayMode
                 yield return PassTouch(3, TouchPhase.Ended, point);
                 for (var frame = 0; frame < 40; frame++) yield return null;
                 Assert.That(player.transform.position.x, Is.GreaterThan(start.x));
-                Assert.That(Vector2.Distance(PassPoint, point), Is.GreaterThan(10f));
+                Assert.That(Vector2.Distance(PassPoint, point), Is.LessThan(0.01f));
+                Assert.That(Vector2.Distance(markerStart, RectTransformUtility.WorldToScreenPoint(null, marker.position)), Is.GreaterThan(10f));
+                AssertBorder(true);
                 Assert.That(attempt.BallOwner, Is.EqualTo(player.transform));
                 Assert.That(PassView.Halo.rect.width, Is.LessThan(150f));
                 yield return Touch(1, TouchPhase.Moved, Vector2.up * 0.5f);
@@ -92,6 +121,7 @@ namespace FlagFootball.Tests.PlayMode
                 {
                     yield return null;
                     Assert.That(attempt.BallOwner, Is.EqualTo(player.transform));
+                    AssertBorder(true);
                     var corners = new Vector3[4];
                     PassView.Halo.GetWorldCorners(corners);
                     foreach (var corner in corners)
@@ -129,6 +159,7 @@ namespace FlagFootball.Tests.PlayMode
             Assert.That(PassView.Halo.rect.width, Is.LessThan(190f));
             yield return PassTouch(3, TouchPhase.Moved, ShiftReference(point, Vector2.down * 90f));
             Assert.That(PassView.Halo.rect.width, Is.EqualTo(192f));
+            AssertBorder(false);
             yield return PassTouch(3, TouchPhase.Ended, point);
             Assert.That(attempt.BallOwner, Is.EqualTo(player.transform));
             Assert.That(attempt.IsActive, Is.True);
@@ -143,6 +174,24 @@ namespace FlagFootball.Tests.PlayMode
         }
 
         [UnityTest]
+        public IEnumerator Charge_VisualMarkerAndScreenEdge_CannotStartPass()
+        {
+            yield return ChargeReady();
+            var marker = PassView.transform.Find("ReceiverMarker").GetComponent<RectTransform>();
+            Assert.That(marker.GetComponentInChildren<Text>().text, Is.EqualTo("L1"));
+            foreach (var graphic in marker.GetComponentsInChildren<Graphic>()) Assert.That(graphic.raycastTarget, Is.False);
+            foreach (var point in new[] { RectTransformUtility.WorldToScreenPoint(null, marker.position), new Vector2(1f, Screen.height * 0.5f) })
+            {
+                yield return PassTouch(2, TouchPhase.Began, point);
+                yield return PassTouch(2, TouchPhase.Moved, PassPoint);
+                yield return PassTouch(2, TouchPhase.Ended, PassPoint);
+                Assert.That(attempt.BallOwner, Is.EqualTo(player.transform));
+                Assert.That(PassView.Halo.rect.width, Is.EqualTo(192f));
+                AssertBorder(false);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator Charge_RestartAndInvalidPossessionPhases_RejectHeldMovedReleasedInput()
         {
             yield return PassTouch(2, TouchPhase.Began, PassPoint);
@@ -154,6 +203,7 @@ namespace FlagFootball.Tests.PlayMode
             for (var frame = 0; frame < 15; frame++) yield return null;
             Assert.That(PassView.Halo.rect.width, Is.LessThan(192f));
             attempt.RestartAttempt();
+            AssertBorder(false);
             Assert.That(attempt.StartAttempt(), Is.True);
             PassView.SetProgress(0f); // Expose the same-frame restart/start window without resetting input in the fixture.
             yield return PassTouch(3, TouchPhase.Moved, PassPoint);
@@ -190,6 +240,7 @@ namespace FlagFootball.Tests.PlayMode
                 var point = PassPoint;
                 yield return PassTouch(2, TouchPhase.Began, point);
                 for (var frame = 0; frame < 10; frame++) yield return null;
+                AssertBorder(true);
                 if (interruption == "focus") input.SendMessage("OnApplicationFocus", false);
                 if (interruption == "pause") { input.SendMessage("OnApplicationPause", true); input.SendMessage("OnApplicationFocus", false); }
                 if (interruption == "disable") input.enabled = false;
@@ -201,6 +252,7 @@ namespace FlagFootball.Tests.PlayMode
                 }
                 if (interruption == "cancel") yield return PassTouch(2, TouchPhase.Canceled, point);
                 if (interruption == "device") { InputSystem.RemoveDevice(screen); yield return null; screen = InputSystem.AddDevice<Touchscreen>(); }
+                AssertBorder(false);
                 if (interruption == "pause")
                 {
                     input.SendMessage("OnApplicationFocus", true);

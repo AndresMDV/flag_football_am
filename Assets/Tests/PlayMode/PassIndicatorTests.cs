@@ -52,6 +52,12 @@ namespace FlagFootball.Tests.PlayMode
         public IEnumerator CoreProgress_ProducesRedOrangeGreenAndSustainedReadyWithoutLaunching()
         {
             Assert.That(indicator.IsAvailable, Is.False);
+            var marker = indicator.transform.Find("ReceiverMarker");
+            Assert.That(marker.gameObject.activeInHierarchy, Is.True);
+            var receiverLabel = marker.GetComponentInChildren<Text>();
+            Assert.That(receiverLabel.text, Is.EqualTo("L1"));
+            Assert.That(receiverLabel.preferredWidth, Is.LessThanOrEqualTo(marker.GetComponent<RectTransform>().rect.width));
+            Assert.That(receiverLabel.preferredHeight, Is.LessThanOrEqualTo(marker.GetComponent<RectTransform>().rect.height));
             attempt.StartAttempt();
             var charge = new PassCharge();
             charge.Begin(1L, System.Numerics.Vector2.Zero);
@@ -78,6 +84,7 @@ namespace FlagFootball.Tests.PlayMode
             Assert.That(label.preferredWidth, Is.LessThanOrEqualTo(indicator.Button.rect.width));
             Assert.That(label.preferredHeight, Is.LessThanOrEqualTo(indicator.Button.rect.height));
             Assert.That(label.color, Is.EqualTo(Color.black));
+            Assert.That(indicator.transform.Find("ChargeBorder").gameObject.activeInHierarchy, Is.False);
         }
 
         [UnityTest]
@@ -139,6 +146,7 @@ namespace FlagFootball.Tests.PlayMode
             var safe = indicator.transform.parent.GetComponent<RectTransform>();
             var controls = Object.FindFirstObjectByType<AttemptControls>();
             var joystick = GameObject.Find("MovementJoystick").GetComponent<RectTransform>();
+            var marker = indicator.transform.Find("ReceiverMarker").GetComponent<RectTransform>();
             foreach (var width in new[] { 1920f, 2400f, 2700f })
             {
                 root.sizeDelta = new Vector2(width, 1080f);
@@ -149,6 +157,18 @@ namespace FlagFootball.Tests.PlayMode
                 view.aspect = width / 1080f;
                 attempt.RestartAttempt();
                 attempt.StartAttempt();
+                indicator.SetProgress(0.5f, true);
+                Canvas.ForceUpdateCanvases();
+                var border = indicator.transform.Find("ChargeBorder").GetComponent<RectTransform>();
+                var borderRect = Rectangle(border);
+                Assert.That(border.gameObject.activeInHierarchy, Is.True);
+                Assert.That(Vector2.Distance(borderRect.min, Vector2.zero), Is.LessThan(0.05f));
+                Assert.That(Vector2.Distance(borderRect.max, new Vector2(width, 1080f)), Is.LessThan(0.05f));
+                foreach (var light in border.GetComponentsInChildren<Image>())
+                {
+                    Assert.That(Rectangle(light.rectTransform).Contains(borderRect.center), Is.False);
+                    Assert.That(light.raycastTarget, Is.False);
+                }
                 foreach (var destination in new[] { new Vector2(-8f, -8f), new Vector2(0f, -8f), new Vector2(8f, -8f),
                     new Vector2(8f, 0f), new Vector2(8f, 8f), new Vector2(0f, 8f), new Vector2(-8f, 8f), new Vector2(-8f, 0f), Vector2.zero })
                 {
@@ -165,8 +185,11 @@ namespace FlagFootball.Tests.PlayMode
                         foreach (var control in new[] { controls.StartRegion, controls.RestartRegion, joystick })
                             Assert.That(halo.Overlaps(Rectangle(control)), Is.False);
                         var expected = view.WorldToViewportPoint(attempt.Receiver.position + Vector3.up * 1.2f);
-                        Assert.That(Vector2.Distance(Rectangle(indicator.Button).center,
+                        Assert.That(Vector2.Distance(Rectangle(marker).center,
                             new Vector2(expected.x * width, expected.y * 1080f)), Is.LessThan(0.05f));
+                        Assert.That(area.Contains(Rectangle(marker).min) && area.Contains(Rectangle(marker).max), Is.True);
+                        Assert.That(Vector2.Distance(Rectangle(indicator.Button).center,
+                            new Vector2(area.xMax - 560f, area.yMin + 208f)), Is.LessThan(0.05f));
                         if (delta.magnitude < 0.001f) break;
                     }
                     attempt.Quarterback.SetMoveInput(Vector2.zero);
