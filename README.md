@@ -392,6 +392,18 @@ The user confirmed these checks on the Pixel 6a, API 36, with APK `da3d0a0a0590a
 
 These are scoped human reports, not proof of actual reception, probability distributions, whole-attempt app-interruption reset, GPU/thermal performance or the full game. Those boundaries remain with #19, #21, #22 and the open parent lab. The separate ignored deployment evidence retains the individual reports and tested APK identity.
 
+### Continuous reception trial Core (#28, first slice of #19)
+
+`ReceptionTrial` models one immutable reception probability and spherical catching reach in pure Core. `TryCatch` accepts ball start/midpoint/end samples describing one quadratic segment and receiver start/end samples describing **one linear leg**. The later runtime caller must supply nonempty airborne intervals, split at route cuts/stops and clip to flight end, never evaluating an already-ended flight. The model does not infer those boundaries or move actors.
+
+Squared relative distance minus reach squared is quartic. Derivative roots divide it into monotone intervals, so the first contact is found without replacing the arc with a chord or checking only endpoints, including tangencies. Root bisection uses 64 iterations; polynomial zero tolerance is `1e-12 × sum(abs(coefficients))`. `ContactFraction` is normalized interval time, with zero a valid initial overlap. `includeEnd: false` excludes contacts within `1e-10` of the terminal endpoint so the terminal flight event wins numerical ties.
+
+No contact leaves `Result` Pending and consumes no draw. First eligible contact freezes the fraction and resolves Missed/Caught once: probability 0/1 needs no random draw; intermediate values compare one injected uniform `[0,1)` draw to probability. Success is emitted only once; failure/re-entry cannot retry. Invalid geometry is rejected before resolution; a throwing/invalid draw fails closed as Missed and propagates the error, without another trial. There is no per-frame random reroll or statistical test oracle.
+
+Test-first RED with the inert API stub produced 22 expected failures out of 24 (`TestResults/20261119T204429153067Z/EditMode.xml`); initial focused GREEN passed 24/24. Added cases cover two disjoint arc-contact windows and caller-split receiver cuts. Final focused checks passed **27/27**, and `python3 scripts/run_unity_tests.py` passed **118 EditMode + 50 PlayMode = 168**, zero failures/skips, Editor exits 0. All 141 previous named cases remain passing. Reports: `TestResults/20261119T205055473144Z/EditMode.xml` (focused) and `TestResults/20261119T205104367777Z/{EditMode,PlayMode}.xml` (full), both ignored. Source-asset checker: 104 files, zero errors/warnings; all 172 input paths/bytes/modes stayed unchanged during full regression. Runtime harness: **N/A for this pure-Core slice**; scene attachment/possession/reset is #29, and live carrier/held-joystick handoff is #30. All existing gameplay and the installed DA3D APK are unchanged; no new physical reception or performance claim is made.
+
+Rollback this six-path unit against `988e548`: remove `ReceptionTrial.cs`, `ReceptionTrialTests.cs` and their Unity-generated metadata, and restore its README/glossary edits. Existing flight, timing, input and camera foundations are independent. #19 stays open until #28–#30 complete; commit/push/closure and APK/device actions require separate authorization.
+
 ### Issue #14 physical acceptance
 
 The user confirmed all six checks on a Pixel 6a, Android API 36, using the installed ARM64/IL2CPP/OpenGL ES 3 development APK with SHA-256 `8e532743a4ed9ea7f3bec29777062800aecaf29a51ed17e57d9f889a1a597e8d`.
