@@ -43,13 +43,14 @@ namespace FlagFootball.Tests.PlayMode
         {
             Assert.That(indicator.IsAvailable && indicator.Button.gameObject.activeInHierarchy, Is.True);
             Assert.That(indicator.Halo.GetComponent<Image>().color, Is.EqualTo(new Color(color.r, color.g, color.b, 0.5f)));
-            Assert.That(indicator.Button.GetComponent<Image>().color, Is.EqualTo(color));
+            Assert.That(indicator.transform.Find("ReceiverMarker").GetComponent<Image>().color, Is.EqualTo(color));
+            Assert.That(indicator.Button.GetComponent<Image>().color, Is.EqualTo(new Color(0.08f, 0.12f, 0.18f, 0.95f)));
             Assert.That(indicator.Halo.rect.width, Is.EqualTo(diameter).Within(0.01f));
             Assert.That(indicator.Button.rect.width, Is.EqualTo(96f));
         }
 
         [UnityTest]
-        public IEnumerator CoreProgress_ProducesRedOrangeGreenAndSustainedReadyWithoutLaunching()
+        public IEnumerator CoreProgress_ReceiverCyclesKeepPassNeutralAndDoNotLaunch()
         {
             Assert.That(indicator.IsAvailable, Is.False);
             var marker = indicator.transform.Find("ReceiverMarker");
@@ -61,29 +62,37 @@ namespace FlagFootball.Tests.PlayMode
             attempt.StartAttempt();
             var charge = new PassCharge();
             charge.Begin(1L, System.Numerics.Vector2.Zero);
-            indicator.SetProgress(charge.Quality);
+            indicator.SetProgress(charge.Quality, true);
             AssertPresentation(Color.red, 192f);
             charge.Advance(1L, 0.5f);
-            indicator.SetProgress(charge.Quality);
+            indicator.SetProgress(charge.Quality, true);
             AssertPresentation(new Color(1f, 0.5f, 0f), 148.8f);
             charge.Advance(1L, 0.5f);
-            for (var frame = 0; frame < 90; frame++)
+            for (var frame = 0; frame < 180; frame++)
             {
                 charge.Advance(1L, Time.deltaTime);
-                indicator.SetProgress(charge.Quality);
+                indicator.SetProgress(charge.Quality, true);
                 yield return null;
-                AssertPresentation(Color.green, 105.6f);
+                var q = charge.Quality;
+                AssertPresentation(new Color(Mathf.Min(1f, 2f * (1f - q)), q, 0f), Mathf.Lerp(192f, 105.6f, q));
+                Assert.That(receiverLabel.text, Is.EqualTo($"L1\n{Mathf.RoundToInt(q * 100f)}%"));
                 Assert.That(attempt.BallOwner, Is.EqualTo(attempt.Quarterback.transform));
                 Assert.That(attempt.IsActive, Is.True);
             }
+            var lastColor = marker.GetComponent<Image>().color;
             foreach (var invalid in new[] { -1f, 2f, float.NaN, float.PositiveInfinity })
                 Assert.Throws<ArgumentOutOfRangeException>(() => indicator.SetProgress(invalid));
-            AssertPresentation(Color.green, 105.6f);
+            Assert.That(marker.GetComponent<Image>().color, Is.EqualTo(lastColor));
+            Assert.That(receiverLabel.preferredWidth, Is.LessThanOrEqualTo(marker.GetComponent<RectTransform>().rect.width));
+            Assert.That(receiverLabel.preferredHeight, Is.LessThanOrEqualTo(marker.GetComponent<RectTransform>().rect.height));
             var label = indicator.Button.GetComponentInChildren<Text>();
             Assert.That(label.text, Is.EqualTo("PASS"));
             Assert.That(label.preferredWidth, Is.LessThanOrEqualTo(indicator.Button.rect.width));
             Assert.That(label.preferredHeight, Is.LessThanOrEqualTo(indicator.Button.rect.height));
-            Assert.That(label.color, Is.EqualTo(Color.black));
+            Assert.That(label.color, Is.EqualTo(Color.white));
+            indicator.SetProgress(0f);
+            Assert.That(indicator.Halo.gameObject.activeInHierarchy, Is.False);
+            Assert.That(receiverLabel.text, Is.EqualTo("L1"));
             Assert.That(indicator.transform.Find("ChargeBorder").gameObject.activeInHierarchy, Is.False);
         }
 
@@ -93,13 +102,14 @@ namespace FlagFootball.Tests.PlayMode
             indicator.SetProgress(1f);
             Assert.That(indicator.Button.gameObject.activeInHierarchy, Is.False);
             attempt.StartAttempt();
-            indicator.SetProgress(0f);
+            indicator.SetProgress(0f, true);
             AssertPresentation(Color.red, 192f);
             indicator.SetProgress(1f);
             attempt.RestartAttempt();
             Assert.That(indicator.Button.gameObject.activeInHierarchy, Is.False);
             attempt.StartAttempt();
             yield return null;
+            indicator.SetProgress(0f, true);
             AssertPresentation(Color.red, 192f);
             attempt.Ball.SetParent(attempt.Receiver, true); // Possession observation, not a catch implementation.
             indicator.SetProgress(1f);
@@ -133,6 +143,23 @@ namespace FlagFootball.Tests.PlayMode
             yield return null;
             yield return null;
             Assert.That(indicator == null && button == null && sprite == null && texture == null, Is.True);
+        }
+
+        [UnityTest]
+        public IEnumerator ReceptionSnapshot_ZeroIsValidAndRejectedLaunchCannotReplaceIt()
+        {
+            Assert.That(attempt.ReceptionProbability, Is.Null);
+            attempt.StartAttempt();
+            Assert.That(attempt.LaunchPass(attempt.Receiver, float.NaN), Is.False);
+            Assert.That(attempt.ReceptionProbability, Is.Null);
+            Assert.That(attempt.LaunchPass(attempt.Receiver, 0f), Is.True);
+            Assert.That(attempt.LaunchPass(attempt.Receiver, 1f), Is.False);
+            yield return null;
+            Assert.That(attempt.ReceptionProbability.Value, Is.Zero);
+            Assert.That(indicator.transform.Find("ReceiverMarker").GetComponentInChildren<Text>().text, Is.EqualTo("L1\n0%"));
+            Assert.That(indicator.Halo.gameObject.activeInHierarchy, Is.True);
+            attempt.RestartAttempt();
+            Assert.That(attempt.ReceptionProbability, Is.Null);
         }
 
         [UnityTest]
@@ -178,7 +205,7 @@ namespace FlagFootball.Tests.PlayMode
                         var delta = destination - new Vector2(position.x, position.z);
                         attempt.Quarterback.SetMoveInput(Vector2.ClampMagnitude(delta / (5f * Time.deltaTime), 1f));
                         yield return null;
-                        indicator.SetProgress(0f);
+                        indicator.SetProgress(0f, true);
                         Canvas.ForceUpdateCanvases();
                         var halo = Rectangle(indicator.Halo);
                         Assert.That(area.Contains(halo.min) && area.Contains(halo.max), Is.True);

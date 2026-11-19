@@ -14,6 +14,7 @@ namespace FlagFootball.Tests.PlayMode
     public sealed partial class TouchJoystickTests
     {
         private PassIndicator PassView => Object.FindFirstObjectByType<PassIndicator>();
+        private Image ReceiverBadge => PassView.transform.Find("ReceiverMarker").GetComponent<Image>();
         private Vector2 PassPoint => RectTransformUtility.WorldToScreenPoint(null, PassView.Button.position);
         private Vector2 ShiftReference(Vector2 point, Vector2 displacement)
         {
@@ -34,7 +35,8 @@ namespace FlagFootball.Tests.PlayMode
             if (!visible) return;
             var images = border.GetComponentsInChildren<Image>();
             Assert.That(images.Length, Is.EqualTo(8));
-            var color = PassView.Button.GetComponent<Image>().color;
+            var color = ReceiverBadge.color;
+            Assert.That(PassView.Button.GetComponent<Image>().color, Is.EqualTo(new Color(0.08f, 0.12f, 0.18f, 0.95f)));
             var center = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
             foreach (var image in images)
             {
@@ -53,13 +55,14 @@ namespace FlagFootball.Tests.PlayMode
             Assert.That(attempt.StartAttempt(), Is.True);
             yield return null;
             Assert.That(PassView.IsAvailable, Is.True);
+            Assert.That(attempt.ReceptionProbability, Is.Null);
             AssertBorder(false);
         }
 
         [UnityTest]
         public IEnumerator Charge_RedOrangeGreenRelease_UsesCurrentQualityAndActualFlight()
         {
-            foreach (var frames in new[] { 0, 30, 75 })
+            foreach (var frames in new[] { 0, 30, 65, 95, 135, 200 })
             {
                 attempt.RestartAttempt();
                 yield return ChargeReady();
@@ -67,12 +70,14 @@ namespace FlagFootball.Tests.PlayMode
                 yield return PassTouch(2, TouchPhase.Began, point);
                 for (var i = 0; i < frames; i++) yield return null;
                 AssertBorder(true);
-                var color = PassView.Button.GetComponent<Image>().color;
+                var color = ReceiverBadge.color;
                 Assert.That(color.b, Is.Zero);
                 if (frames == 0) Assert.That(color, Is.EqualTo(Color.red));
                 if (frames == 30) Assert.That(color.g, Is.EqualTo(0.5f).Within(0.04f));
-                if (frames == 75) Assert.That(color, Is.EqualTo(Color.green));
-                var quality = Mathf.Min(1f, (192f - PassView.Halo.rect.width) / 86.4f + Time.deltaTime);
+                if (frames == 65 || frames == 200) Assert.That(color, Is.EqualTo(Color.green));
+                var phase = ((frames + 1) * Time.deltaTime) % 2.2f;
+                var raw = phase <= 1f ? phase : phase <= 1.2f ? 1f : 2.2f - phase;
+                var quality = Mathf.RoundToInt(raw * 100f) / 100f;
                 var ground = GameObject.Find("Ground").GetComponent<Renderer>().bounds;
                 var velocity = attempt.ReceiverVelocity;
                 System.Numerics.Vector3 Core(Vector3 v) => new System.Numerics.Vector3(v.x, v.y, v.z);
@@ -82,13 +87,16 @@ namespace FlagFootball.Tests.PlayMode
                     groundHeight: ground.max.y + ball.GetComponent<Renderer>().bounds.extents.y);
                 yield return PassTouch(2, TouchPhase.Ended, point);
                 Assert.That(attempt.BallOwner, Is.Null);
+                Assert.That(attempt.ReceptionProbability.Value, Is.EqualTo(quality).Within(0.000001f));
                 AssertBorder(false);
                 var predicted = expected.Sample(Time.deltaTime);
                 Assert.That(Vector3.Distance(ball.position, new Vector3(predicted.X, predicted.Y, predicted.Z)), Is.LessThan(0.002f));
                 yield return PassTouch(2, TouchPhase.Ended, point);
+                Assert.That(ReceiverBadge.GetComponentInChildren<Text>().text, Is.EqualTo($"L1\n{Mathf.RoundToInt(quality * 100f)}%"));
                 Assert.That(attempt.LaunchPass(receiver, 1f), Is.False);
                 for (var i = 0; i < 240 && attempt.IsActive; i++) yield return null;
                 Assert.That(attempt.State, Is.EqualTo(AttemptState.Incomplete));
+                Assert.That(attempt.ReceptionProbability.Value, Is.EqualTo(quality).Within(0.000001f));
             }
         }
 
@@ -117,17 +125,22 @@ namespace FlagFootball.Tests.PlayMode
                 Assert.That(attempt.BallOwner, Is.EqualTo(player.transform));
                 Assert.That(PassView.Halo.rect.width, Is.LessThan(150f));
                 yield return Touch(1, TouchPhase.Moved, Vector2.up * 0.5f);
-                for (var frame = 0; frame < 90; frame++)
+                var greenWindows = 0;
+                var wasGreen = false;
+                for (var frame = 0; frame < 180; frame++)
                 {
                     yield return null;
                     Assert.That(attempt.BallOwner, Is.EqualTo(player.transform));
                     AssertBorder(true);
+                    var green = ReceiverBadge.color == Color.green;
+                    if (green && !wasGreen) greenWindows++;
+                    wasGreen = green;
                     var corners = new Vector3[4];
                     PassView.Halo.GetWorldCorners(corners);
                     foreach (var corner in corners)
                         Assert.That(Screen.safeArea.Contains(RectTransformUtility.WorldToScreenPoint(null, corner)), Is.True);
                 }
-                Assert.That(PassView.Button.GetComponent<Image>().color, Is.EqualTo(Color.green));
+                Assert.That(greenWindows, Is.GreaterThanOrEqualTo(2));
                 yield return PassTouch(2, TouchPhase.Ended, point);
                 Assert.That(attempt.BallOwner, Is.Null);
                 var releasedAt = player.transform.position;
@@ -180,7 +193,8 @@ namespace FlagFootball.Tests.PlayMode
             var marker = PassView.transform.Find("ReceiverMarker").GetComponent<RectTransform>();
             Assert.That(marker.GetComponentInChildren<Text>().text, Is.EqualTo("L1"));
             foreach (var graphic in marker.GetComponentsInChildren<Graphic>()) Assert.That(graphic.raycastTarget, Is.False);
-            foreach (var point in new[] { RectTransformUtility.WorldToScreenPoint(null, marker.position), new Vector2(1f, Screen.height * 0.5f) })
+            var markerPoint = RectTransformUtility.WorldToScreenPoint(null, marker.position);
+            foreach (var point in new[] { markerPoint, ShiftReference(markerPoint, Vector2.right * 70f), new Vector2(1f, Screen.height * 0.5f) })
             {
                 yield return PassTouch(2, TouchPhase.Began, point);
                 yield return PassTouch(2, TouchPhase.Moved, PassPoint);
@@ -189,6 +203,14 @@ namespace FlagFootball.Tests.PlayMode
                 Assert.That(PassView.Halo.rect.width, Is.EqualTo(192f));
                 AssertBorder(false);
             }
+            yield return PassTouch(3, TouchPhase.Began, PassPoint);
+            markerPoint = RectTransformUtility.WorldToScreenPoint(null, marker.position);
+            yield return PassTouch(4, TouchPhase.Began, ShiftReference(markerPoint, Vector2.right * 70f));
+            yield return PassTouch(4, TouchPhase.Ended, markerPoint);
+            AssertBorder(true);
+            Assert.That(attempt.BallOwner, Is.EqualTo(player.transform));
+            yield return PassTouch(3, TouchPhase.Ended, PassPoint);
+            Assert.That(attempt.BallOwner, Is.Null);
         }
 
         [UnityTest]

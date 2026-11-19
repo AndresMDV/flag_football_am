@@ -15,17 +15,20 @@ namespace FlagFootball.Tests.EditMode
         [TestCase(0.25f, 0.25f)]
         [TestCase(0.5f, 0.5f)]
         [TestCase(1f, 1f)]
-        [TestCase(5f, 1f)]
+        [TestCase(1.1f, 1f)]
+        [TestCase(1.7f, 0.5f)]
+        [TestCase(2.2f, 0f)]
+        [TestCase(5f, 0.6f)]
         public void EarlyMidReadyRelease_EmitsCurrentQualityExactlyOnce(float seconds, float expected)
         {
             var charge = new PassCharge();
             Assert.That(charge.Begin(Owner, Origin), Is.True);
             charge.Advance(Owner, seconds);
             Assert.That(charge.IsCaptured, Is.True, "Advancement never automatically releases.");
-            Assert.That(charge.Quality, Is.EqualTo(expected));
+            Assert.That(charge.Quality, Is.EqualTo(expected).Within(0.000001f));
             var released = charge.Release(Owner, Origin);
             Assert.That(released.HasValue, Is.True, "Zero-quality release is still a valid release.");
-            Assert.That(released.Value, Is.EqualTo(expected));
+            Assert.That(released.Value, Is.EqualTo(expected).Within(0.000001f));
             Assert.That(charge.IsCaptured, Is.False);
             Assert.That(charge.Quality, Is.Zero);
             Assert.That(charge.Release(Owner, Origin), Is.Null);
@@ -47,19 +50,56 @@ namespace FlagFootball.Tests.EditMode
         }
 
         [Test]
-        public void SustainedReadyAndStationaryFinger_DoNotCycleCancelOrAutoRelease()
+        public void ReceiverTimingCycle_RepeatsWithFiniteGreenWindowAndNoAutomaticRelease()
         {
             var charge = new PassCharge();
             charge.Begin(Owner, Origin);
-            charge.Advance(Owner, 1f);
-            for (var frame = 0; frame < 200; frame++)
+            for (var cycle = 0; cycle < 8; cycle++)
             {
-                charge.Move(Owner, Origin);
-                charge.Advance(Owner, 0.033f);
+                charge.Advance(Owner, 1f);
+                Assert.That(charge.Quality, Is.EqualTo(1f).Within(0.00001f));
+                charge.Advance(Owner, 0.1f);
                 Assert.That(charge.Quality, Is.EqualTo(1f));
+                charge.Advance(Owner, 0.6f);
+                Assert.That(charge.Quality, Is.EqualTo(0.5f).Within(0.00001f));
+                charge.Advance(Owner, 0.5f);
+                Assert.That(charge.Quality, Is.Zero.Within(0.00001f));
+                charge.Move(Owner, Origin);
                 Assert.That(charge.Owns(Owner), Is.True);
             }
             charge.Advance(Owner, float.MaxValue);
+            Assert.That(charge.Quality, Is.InRange(0f, 1f));
+            Assert.That(charge.Owns(Owner), Is.True);
+            Assert.That(charge.Release(Owner, Origin).Value, Is.InRange(0f, 1f));
+        }
+
+        [TestCase(0f)]
+        [TestCase(0.25f)]
+        [TestCase(2f)]
+        public void ConfiguredGreenWindow_ExpiresIntoDescendingHalf(float window)
+        {
+            var charge = new PassCharge(duration: 0.5f, readyDuration: window);
+            charge.Begin(Owner, Origin);
+            charge.Advance(Owner, 0.5f);
+            Assert.That(charge.Quality, Is.EqualTo(1f));
+            charge.Advance(Owner, window);
+            Assert.That(charge.Quality, Is.EqualTo(1f));
+            charge.Advance(Owner, 0.25f);
+            Assert.That(charge.Quality, Is.EqualTo(0.5f));
+            charge.Advance(Owner, 0.25f);
+            Assert.That(charge.Quality, Is.Zero);
+        }
+
+        [Test]
+        public void WholePercentageScore_HasExactDisplayedZeroAndHundredEndpoints()
+        {
+            var charge = new PassCharge();
+            charge.Begin(Owner, Origin);
+            charge.Advance(Owner, 0.004f);
+            Assert.That(charge.Quality, Is.Zero);
+            charge.Advance(Owner, 0.006f);
+            Assert.That(charge.Quality, Is.EqualTo(0.01f));
+            charge.Advance(Owner, 0.99f);
             Assert.That(charge.Release(Owner, Origin).Value, Is.EqualTo(1f));
         }
 
@@ -166,6 +206,7 @@ namespace FlagFootball.Tests.EditMode
             {
                 Assert.Throws<ArgumentOutOfRangeException>(() => new PassCharge(duration: invalid));
                 Assert.Throws<ArgumentOutOfRangeException>(() => new PassCharge(cancelDistance: invalid));
+                if (invalid != 0f) Assert.Throws<ArgumentOutOfRangeException>(() => new PassCharge(readyDuration: invalid));
             }
             var charge = new PassCharge();
             var invalidPositions = new[] { new Vector2(float.NaN, 0f), new Vector2(0f, float.PositiveInfinity),

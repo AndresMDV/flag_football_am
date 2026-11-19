@@ -2,7 +2,7 @@
 
 A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap prepares an explicitly bound QB, receiver and visible QB-held ball, with movement blocked until Start. Start/Restart controls drive repeatable attempts: the joystick controls the QB independently of an automatic one-cut receiver route. A fixed-orientation passing camera keeps both actors, the ball and reserved indicator space visible. Automated route/framing checks do not extend the historical Pixel evidence below to this candidate.
 
-To pass, press **Start**, hold the fixed **PASS** control beside Start/Restart, then release at the desired charge color. The receiver has a noninteractive **L1** marker. The halo and screen-edge light show charge color; the edge light appears only while holding PASS and leaves the center clear. Green stays ready while held; a downward swipe cancels without throwing. The left joystick can move the QB simultaneously. Catching is not implemented yet, so a launched pass eventually becomes incomplete until Restart.
+To pass, press **Start**, hold the fixed neutral **PASS** control and watch the receiver's **L1 percentage/halo** cycle red → orange → green → orange → red. Release to freeze that percentage for both throw quality and reception probability within catching range. Green is a finite timing window, not a permanent ready state; a downward swipe cancels. The joystick remains independent. Screen-edge color mirrors the receiver only while held and leaves the center clear. Actual reception belongs to #19 and is not implemented yet, so this lab still ends launched passes as incomplete until Restart.
 
 ## Run the checks
 
@@ -256,7 +256,9 @@ Verification: focused `PassLaunchTests` passed **5/5**; `python3 scripts/run_uni
 
 No new APK, physical flight/touch or independent review is claimed. #18/#19/#20/#21/#22 still own charging, catches, running transition, interruption policy and matching-build Pixel integration. Rollback this ten-path unit against `c52dedc`, removing `PassLaunchTests.cs` with its generated metadata and restoring lifecycle/route/scene/label, test/reference and README edits; preserve the published `PassFlight` core and previous movement/camera foundation.
 
-### Charge and swipe model (#25, first slice of #18)
+### Historical charge and swipe model (#25, first slice of #18)
+
+The original plateau policy below is historical; the receiver-cycle revision later in this section supersedes it while retaining ownership, cancellation and reset semantics.
 
 `PassCharge` is the pure C# ownership/quality model now consumed by `ChargedPassInput` below. It returns execution quality, never a reception probability or a launch side effect. #26 supplies presentation and #27 connects actual Input System touch events; all three slices are required for #18.
 
@@ -307,7 +309,7 @@ Verification: focused `PassIndicatorTests` passed **4/4**; `python3 scripts/run_
 
 The #26 presentation slice alone did not verify real touch capture, supplied by #27 below. No new APK, physical readability/charge-feel or independent review is claimed; #22 owns matching-build physical calibration. Rollback this eight-path unit against `987b933`, removing `PassIndicator.cs`/`PassIndicatorTests.cs` with generated metadata and restoring Bootstrap eligibility/composition, camera mode/sprite accessors and README edits; preserve the published charge/flight models and previous input/camera behavior.
 
-### Captured touch charging and launch (#27, completing #18 scope)
+### Historical captured touch charging checkpoint (#27)
 
 `ChargedPassInput` connects the existing indicator, `PassCharge` and `LaunchPass` through **Input System 1.20.1 EnhancedTouch**, with `activeInputHandler: 1` unchanged. There is no new action asset, EventSystem module, legacy Input call or keyboard-only mode. Bootstrap creates one adapter under the owned indicator/canvas. Its execution order -90 follows Start/Restart (-110) and joystick (-100), before actor updates; the receiver's visual marker projects after the camera in LateUpdate.
 
@@ -334,7 +336,9 @@ Final reports: `TestResults/20261118T201100217471Z/{EditMode,PlayMode}.xml` (ign
 
 These are automated input/layout/lifecycle simulations, not physical charge-feel, rendered-pixel or lock/unlock proof. The development APK `6ca5acbe4924eb1ab4d0f3463bd2889c2bb8fe44c543fdc3bcf463fadbad7b27` (61,704,547 bytes) built with zero errors/warnings and was installed/hash-verified on Pixel 6a, API 36. Physical feedback rejected the moving button placement and requested fixed PASS, a visual L1 marker and charge-only screen-edge feedback; charge acceptance remains pending. This checkpoint is not approval of the old UI, and no independent review is claimed. Rollback this seven-path unit against `49c61b3`, removing `ChargedPassInput.cs`, the new partial charge-test file and their generated metadata, and restoring Bootstrap wiring/settings, fixture extensions and README edits; preserve the published model, indicator, joystick and flight foundation.
 
-### Fixed PASS, L1 and charge-only screen edges (#27 usability revision)
+### Historical fixed PASS and charge-edge checkpoint (#27)
+
+This records the first fixed-control prototype, saved locally as `566e8d2`. The receiver-focused revision below supersedes its button-centered color and permanent-green policy.
 
 PASS is now fixed to the left of the Start/Restart stack, not attached to the receiver. A small white **L1** label on a dark background tracks the receiver during passing framing, including preparation and flight; it is a visual identifier for this single-receiver lab, not a controller binding or another action target. PASS retains its existing possession/state gate, circular hit region, charge/cancel policy and explicit receiver binding. No QB bound, route, camera orientation, catch or control-transfer policy changed.
 
@@ -348,7 +352,45 @@ PASS is now fixed to the left of the Start/Restart stack, not attached to the re
 
 Test-first check: six actual-input cases failed because charge-edge feedback was absent (`TestResults/20261118T211059840481Z/PlayMode.xml`, expected RED). After implementation, focused `TouchJoystickTests.Charge_` passed **6/6** and `PassIndicatorTests` passed **4/4**, zero failures, Editor exits 0. Existing geometry/capture cases now assert a stable PASS center and moving L1 marker, inset-safe halo/control separation at three widths, full-canvas edge geometry, matching colors, clear center, noninterception, sustained green and cancellation/interruption/reset shutoff. New `Charge_VisualMarkerAndScreenEdge_CannotStartPass` rejects marker/edge presses and drag-in activation. Full regression `python3 scripts/run_unity_tests.py` passed **84 EditMode + 49 PlayMode**, zero failures/skips, Editor exits 0, preserving all 132 previous named cases. Reports: `TestResults/20261118T211856518432Z/{EditMode,PlayMode}.xml` (ignored). Asset checker: 100 files, zero errors/warnings; all 167 input paths/bytes/modes remained unchanged during testing.
 
-The revised development APK `e4d79b365529123647bd6a125132b1564e2a99e336b8516ff48ef8baf2f5c928` (79,338,057 bytes) built with zero errors/warnings and was normally installed/hash-verified on Pixel 6a, API 36. Cold launch returned `Status: ok` and `BASELINE_SCENE_READY`; all 167 source/config/asset paths, bytes and modes stayed unchanged through build/install. Physical usability/readability/charge acceptance still awaits user observations, and #18/#27 stay open. No independent review is claimed. Rollback this six-path UI unit against local input checkpoint `34fa5c2`, reverting `PassIndicator.cs`, `ChargedPassInput.cs`, `SceneBootstrap.cs`, `PassIndicatorTests.cs`, `TouchJoystickTests.Charge.cs` and this README revision; preserve the input foundation and earlier flight/charge/joystick behavior.
+The revised development APK `e4d79b365529123647bd6a125132b1564e2a99e336b8516ff48ef8baf2f5c928` (79,338,057 bytes) built with zero errors/warnings and was normally installed/hash-verified on Pixel 6a, API 36. Cold launch returned `Status: ok` and `BASELINE_SCENE_READY`; all 167 source/config/asset paths, bytes and modes stayed unchanged through build/install. The user confirmed fixed PASS/L1 visibility, held red/orange/green readiness and a single green-release pass with the edge light switching off, but rejected the overall flow and requested the receiver-cycle revision below. These observations do not accept the later cycle policy or complete #18/#27. No independent review is claimed. Rollback this six-path UI unit against local input checkpoint `34fa5c2`, reverting `PassIndicator.cs`, `ChargedPassInput.cs`, `SceneBootstrap.cs`, `PassIndicatorTests.cs`, `TouchJoystickTests.Charge.cs` and this README revision; preserve the input foundation and earlier flight/charge/joystick behavior.
+
+### Receiver timing cycles and frozen reception percentage (#27)
+
+PASS stays neutral and fixed. The receiver keeps its blue body/team identity; its noninteractive **L1 badge and halo** now carry the changing color and numeric percentage. The 84 × 64 badge uses black text during feedback and white L1 on a dark background when idle. The full receiver halo uses the existing camera reservation; no QB bound, route, camera orientation or input backend changed. Marker, halo and screen edges cannot start or steal a pass.
+
+| Internal setting / rule | Value |
+| --- | --- |
+| `chargeDuration` | 1 second rising from 0% to 100%, then 1 second falling back |
+| `greenWindowDuration` | 0.2 seconds at 100%; nominal cycle length 2.2 seconds, repeated until release |
+| Score resolution | Whole percentage points; displayed 0% and 100% correspond to exact stored 0 and 1 |
+| `ReceptionProbability` | Nullable per-pass snapshot, frozen only after accepted launch; zero is valid; cleared by Restart |
+
+The SAME release score drives existing `PassFlight` underthrow/intercept quality and the stored reception probability. A low percentage can therefore both shorten a throw and reduce the chance of catching it **if it reaches receiver range**. The receiver display freezes at release, including through flight/incomplete, while the edge light switches off. Canceled/invalid input stores no throw percentage; invalid or duplicate launch cannot replace an existing snapshot. No cycle auto-throws, retains green forever, steals the joystick or resumes stale input.
+
+**Reception is still not implemented.** #19 owns the actual one-time random trial at first eligible reach and possession transfer: 0% fails, 100% catches within reach, and intermediate percentages can randomly fail a correctly arriving pass. This unit stores that future input; it does not pretend an outcome roll already runs, guarantee overall completion or add homing/teleport behavior. See [domain terminology](GLOSSARY.md).
+
+Test-first RED proved the old plateau at descending/repeated times (four expected failures, `TestResults/20261119T151541519042Z/EditMode.xml`) and absent receiver color (two expected failures, `TestResults/20261119T151822432171Z/PlayMode.xml`). Full regression passed **91 EditMode + 50 PlayMode = 141**, zero failures/skips, Editor exits 0, under `TestResults/20261119T152351953440Z/{EditMode,PlayMode}.xml` (ignored). Asset checker: 100 files, zero errors/warnings; all 168 input paths/bytes/modes remained unchanged through regression.
+
+Of the 133 earlier cases, 130 unchanged names remain; three obsolete expectations were explicitly migrated: `SustainedReadyAndStationaryFinger_DoNotCycleCancelOrAutoRelease` → `ReceiverTimingCycle_RepeatsWithFiniteGreenWindowAndNoAutomaticRelease`, `CoreProgress_ProducesRedOrangeGreenAndSustainedReadyWithoutLaunching` → `CoreProgress_ReceiverCyclesKeepPassNeutralAndDoNotLaunch`, and the five-second release expectation changes from 100% to 60%. Eight additional cases cover ascending/descending/repeated times, configurable/zero green windows, exact endpoint percentages and zero-versus-missing release snapshots. Actual touch traces validate two green windows with held joystick, six release timings, unchanged flight calculation using the same frozen score, frozen receiver label, no feedback capture, interruption/reset guards and full halo containment.
+
+The receiver-cycle development APK `da3d0a0a0590ac2f7b8882782c4610b59cde868add10eb7f093041af153ab86e` (79,334,511 bytes) built with zero errors/warnings and was normally installed/hash-verified on the Pixel 6a, API 36. Cold launch returned `Status: ok` and `BASELINE_SCENE_READY`; all 168 source/config/asset paths, bytes and modes remained unchanged through build/install. The user confirmed the eight matching-build checks below; #18/#27 remain open pending authorized publication and closure. No independent review is claimed. Rollback this nine-path unit against local `566e8d2`, reverting its Core/Unity/test/README changes and removing the new glossary; preserve both earlier local checkpoints and published flight/input foundations.
+
+#### Matching-build receiver-cycle observations
+
+The user confirmed these checks on the Pixel 6a, API 36, with APK `da3d0a0a0590ac2f7b8882782c4610b59cde868add10eb7f093041af153ab86e`:
+
+| Scenario | User-confirmed result |
+| --- | --- |
+| Hold PASS for five seconds | L1 reaches 100%, falls and rises again; the ball remains with the QB |
+| Release at an intermediate percentage | Receiver percentage freezes, edge light switches off and one pass launches |
+| Compare approximately 20% and 100%, with QB stationary and receiver route finished | Low release stays short; full release reaches the receiver's area |
+| Hold joystick and PASS with separate fingers | QB moves while L1 keeps cycling without interruption |
+| Downward swipe and release | Cancellation does not launch the ball |
+| Fresh PASS after cancellation, without Restart | A fresh gesture launches a pass |
+| Hold PASS through Restart/Start, then release the old finger | QB retains the ball; stale release does not throw |
+| Fresh PASS after that reset and overall flow | Launch works normally; the user finds following the receiver and choosing release clear and comfortable |
+
+These are scoped human reports, not proof of actual reception, probability distributions, whole-attempt app-interruption reset, GPU/thermal performance or the full game. Those boundaries remain with #19, #21, #22 and the open parent lab. The separate ignored deployment evidence retains the individual reports and tested APK identity.
 
 ### Issue #14 physical acceptance
 

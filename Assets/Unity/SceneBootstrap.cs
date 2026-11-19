@@ -25,6 +25,7 @@ namespace FlagFootball.Unity
         [SerializeField, Range(0.01f, 0.99f)] private float orangeChargeThreshold = 0.5f;
         [SerializeField, Min(1f)] private float readyHaloScale = 1.1f;
         [SerializeField, Min(0.01f)] private float chargeDuration = 1f;
+        [SerializeField, Min(0f)] private float greenWindowDuration = 0.2f;
         [SerializeField, Min(1f)] private float chargeCancelDistance = 80f;
 
         private Renderer ground;
@@ -54,6 +55,7 @@ namespace FlagFootball.Unity
         public AttemptState State => lifecycle.State;
         public bool IsActive => State == AttemptState.Active;
         public FlightEnd FlightOutcome => flight?.End ?? FlightEnd.None;
+        public float? ReceptionProbability { get; private set; }
         public bool CanLaunchPass => IsInitialized && isActiveAndEnabled && !resetting && !resetFailed &&
             IsActive && ground && receiver && quarterback && flight == null && BallOwner == quarterback.transform;
         public Vector3 ReceiverVelocity
@@ -93,7 +95,7 @@ namespace FlagFootball.Unity
             var indicator = PassIndicator.Create(this, cameraDriver, joystick.SafeArea, joystick.CircleSprite,
                 passButtonDiameter, passHaloDiameter, passIndicatorOffset, orangeChargeThreshold, readyHaloScale,
                 passButtonPosition, chargeBorderWidth, chargeBorderOpacity);
-            ChargedPassInput.Create(this, indicator, chargeDuration, chargeCancelDistance);
+            ChargedPassInput.Create(this, indicator, chargeDuration, chargeCancelDistance, greenWindowDuration);
             Debug.Log("BASELINE_SCENE_READY");
         }
 
@@ -141,6 +143,7 @@ namespace FlagFootball.Unity
             }
             catch (ArgumentException) { return false; }
             ball.SetParent(null, true);
+            ReceptionProbability = quality;
             flight = candidate;
             return true;
         }
@@ -166,6 +169,7 @@ namespace FlagFootball.Unity
             quarterback.SetMovementAllowed(false);
             lifecycle.RestartAttempt();
             flight = null;
+            ReceptionProbability = null;
             receiverRoute.Reset();
             joystick.ResetInput();
             try

@@ -17,9 +17,9 @@ namespace FlagFootball.Unity
         private double acceptTouchesAfter, ownerStartTime;
         private bool hasFocus = true, paused;
 
-        internal static ChargedPassInput Create(SceneBootstrap owner, PassIndicator indicator, float duration, float cancelDistance)
+        internal static ChargedPassInput Create(SceneBootstrap owner, PassIndicator indicator, float duration, float cancelDistance, float readyDuration)
         {
-            var model = new PassCharge(duration, cancelDistance);
+            var model = new PassCharge(duration, cancelDistance, readyDuration);
             var root = new GameObject("ChargedPassInput");
             root.SetActive(false);
             root.transform.SetParent(indicator.transform, false);

@@ -5,23 +5,35 @@ namespace FlagFootball.Core
 {
     public sealed class PassCharge
     {
-        private readonly double duration;
+        private readonly double duration, readyDuration, period;
         private readonly float cancelDistance;
         private long? owner;
         private Vector2 origin;
         private double elapsed;
 
         public bool IsCaptured => owner.HasValue;
-        public float Quality => (float)(elapsed / duration);
+        public float Quality
+        {
+            get
+            {
+                var value = elapsed <= duration ? elapsed / duration :
+                    elapsed <= duration + readyDuration ? 1d : (period - elapsed) / duration;
+                return (float)(Math.Round(value * 100d, MidpointRounding.AwayFromZero) / 100d);
+            }
+        }
         public bool Owns(long pointer) => owner == pointer;
 
-        public PassCharge(float duration = 1f, float cancelDistance = 80f)
+        public PassCharge(float duration = 1f, float cancelDistance = 80f, float readyDuration = 0.2f)
         {
             if (!float.IsFinite(duration) || duration <= 0f)
                 throw new ArgumentOutOfRangeException(nameof(duration));
             if (!float.IsFinite(cancelDistance) || cancelDistance <= 0f)
                 throw new ArgumentOutOfRangeException(nameof(cancelDistance));
+            if (!float.IsFinite(readyDuration) || readyDuration < 0f)
+                throw new ArgumentOutOfRangeException(nameof(readyDuration));
             this.duration = duration;
+            this.readyDuration = readyDuration;
+            period = 2d * duration + readyDuration;
             this.cancelDistance = cancelDistance;
         }
 
@@ -39,7 +51,7 @@ namespace FlagFootball.Core
         {
             if (!float.IsFinite(deltaTime) || deltaTime < 0f)
                 throw new ArgumentOutOfRangeException(nameof(deltaTime));
-            if (Owns(pointer)) elapsed = Math.Min(duration, elapsed + deltaTime);
+            if (Owns(pointer)) elapsed = (elapsed + deltaTime) % period;
         }
 
         // Coordinates are stable finger-space values, never indicator-relative positions.
