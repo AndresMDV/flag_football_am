@@ -4,6 +4,7 @@ using UnityEngine;
 
 namespace FlagFootball.Unity
 {
+    [DefaultExecutionOrder(-50)] // Read touch (-100), resolve possession, then move actors (0).
     public sealed class SceneBootstrap : MonoBehaviour
     {
         [SerializeField] private PlayerMovement quarterback;
@@ -47,6 +48,7 @@ namespace FlagFootball.Unity
         private OneCutRoute receiverRoute;
         private PassFlight flight;
         private PassReception reception;
+        private PlayerMovement receiverMovement;
 
         public bool IsInitialized { get; private set; }
         public PlayerMovement Quarterback => quarterback;
@@ -121,6 +123,8 @@ namespace FlagFootball.Unity
                     var scale = receiver.lossyScale;
                     ball.localScale = new Vector3(size.x / scale.x, size.y / scale.y, size.z / scale.z);
                     quarterback.SetMovementAllowed(false);
+                    receiverMovement.SetMovementAllowed(true);
+                    joystick.Retarget(receiverMovement);
                     flight = null;
                     actionControls.RefreshState();
                     return;
@@ -192,12 +196,14 @@ namespace FlagFootball.Unity
             if (!IsInitialized || resetting) return false;
             resetting = resetFailed = true;
             quarterback.SetMovementAllowed(false);
+            receiverMovement.SetMovementAllowed(false);
             lifecycle.RestartAttempt();
             flight = null;
             reception.Clear();
             ReceptionProbability = null;
             receiverRoute.Reset();
             joystick.ResetInput();
+            joystick.Retarget(quarterback);
             try
             {
                 Resetting?.Invoke();
@@ -227,6 +233,7 @@ namespace FlagFootball.Unity
             receiver.localScale = new Vector3(0.6f, 1f, 1f);
             initialReceiverPosition = receiver.position;
             initialReceiverRotation = receiver.rotation;
+            receiverMovement = quarterback.CreateBlockedFor(receiver);
             var routeStart = new System.Numerics.Vector2(initialReceiverPosition.x, initialReceiverPosition.z);
             receiverRoute = new OneCutRoute(routeStart,
                 routeStart + new System.Numerics.Vector2(receiverCutOffset.x, receiverCutOffset.y),
@@ -282,6 +289,7 @@ namespace FlagFootball.Unity
         {
             IsInitialized = false;
             if (quarterback) quarterback.SetMovementAllowed(false);
+            if (receiverMovement) receiverMovement.SetMovementAllowed(false);
             if (joystick)
             {
                 joystick.gameObject.SetActive(false);

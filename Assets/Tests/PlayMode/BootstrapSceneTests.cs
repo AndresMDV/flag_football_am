@@ -39,7 +39,9 @@ namespace FlagFootball.Tests.PlayMode
             Assert.That(attempt.Receiver.name, Is.EqualTo("Receiver"));
             Assert.That(attempt.Receiver.position, Is.EqualTo(new Vector3(1.5f, 0.5f, 1f)));
             Assert.That(attempt.Receiver.rotation, Is.EqualTo(Quaternion.identity));
-            Assert.That(attempt.Receiver.GetComponent<PlayerMovement>(), Is.Null);
+            var receiverMovement = attempt.Receiver.GetComponent<PlayerMovement>();
+            Assert.That(receiverMovement, Is.Not.Null);
+            Assert.That(receiverMovement.MovementAllowed, Is.False);
             Assert.That(attempt.BallOwner, Is.EqualTo(qb));
             Assert.That(attempt.Ball.parent, Is.EqualTo(qb));
             Assert.That(attempt.Ball.localPosition, Is.EqualTo(new Vector3(0.8f, 0.1f, 0.2f)));

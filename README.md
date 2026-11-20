@@ -1,8 +1,8 @@
 # Flag Football Android Prototype
 
-A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap prepares an explicitly bound QB, receiver and visible QB-held ball, with movement blocked until Start. Start/Restart controls drive repeatable attempts: the joystick controls the QB independently of an automatic one-cut receiver route. A fixed-orientation passing camera keeps both actors, the ball and reserved indicator space visible. Automated route/framing checks do not extend the historical Pixel evidence below to this candidate.
+A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap prepares an explicitly bound QB, receiver and visible QB-held ball, with movement blocked until Start. Start/Restart controls drive repeatable attempts: before reception, the joystick controls the QB independently of an automatic one-cut receiver route. A fixed-orientation passing camera keeps both actors, the ball and reserved indicator space visible. Automated route/framing checks do not extend the historical Pixel evidence below to this candidate.
 
-To pass, press **Start**, hold the fixed neutral **PASS** control and watch the receiver's **L1 percentage/halo** cycle red → orange → green → orange → red. Release to freeze that percentage for both throw quality and reception probability within catching range. Green is a finite timing window, not a permanent ready state; a downward swipe cancels. The joystick remains independent. Screen-edge color mirrors the receiver only while held and leaves the center clear. Reachable passes now resolve one reception trial. On success, the receiver holds the ball and both actors stop; receiver running with the held joystick follows in #30. A failed/missed pass ends incomplete, and Restart restores the prepared attempt.
+To pass, press **Start**, hold the fixed neutral **PASS** control and watch the receiver's **L1 percentage/halo** cycle red → orange → green → orange → red. Release to freeze that percentage for both throw quality and reception probability within catching range. Green is a finite timing window, not a permanent ready state; a downward swipe cancels. The joystick remains independent. Screen-edge color mirrors the receiver only while held and leaves the center clear. Reachable passes now resolve one reception trial. On success, the route and QB stop while the receiver takes possession and immediately inherits the held joystick's movement input. A failed/missed pass ends incomplete, and Restart restores the prepared attempt.
 
 ## Run the checks
 
@@ -410,7 +410,7 @@ Rollback this six-path unit against `988e548`: remove `ReceptionTrial.cs`, `Rece
 
 `PassReception` connects the Core trial to actual ball/route samples with `receptionReach = 0.8` world units around the receiver center. It clips nonempty airborne intervals to flight end and splits them at route cut/stop times. Read-only `OneCutRoute.SampleAfter`, `TimeToCut` and `TimeToStop` predict each linear leg without advancing it; the existing float Step remains, with a double overload for exact contact-time advancement. The terminal check compares relative durations, avoiding floating-point addition that could misclassify an endpoint tie.
 
-A successful catch stops the route at contact, attaches the ball at its stored held pose while retaining world scale, recognizes the receiver as `BallOwner`, stops the QB and discards the flight. The attempt remains Active, the selected percentage stays frozen and further QB throws are rejected. **Neither actor runs after catching in this slice**: the joystick owner/vector remains captured, but movement retargeting is #30. No actor is teleported to create contact and the camera remains in the passing frame.
+A successful catch stops the route at contact, attaches the ball at its stored held pose while retaining world scale, recognizes the receiver as `BallOwner`, stops the QB and discards the flight. The attempt remains Active, the selected percentage stays frozen and further QB throws are rejected. **At #29 delivery, neither actor ran after catching**: the joystick owner/vector remained captured. The #30 extension below now moves the receiver while keeping route control and the QB blocked. No actor is teleported to create contact and the camera remains in the passing frame.
 
 A failed trial never retries and the unchanged trajectory continues to its ground/field-exit outcome. The adapter retains its per-flight trial across disable/re-enable; Restart explicitly clears it, restores both poses/QB possession, clears input and requires fresh touches. The normal catch path does not call `TouchJoystick.ResetInput`.
 
@@ -440,6 +440,33 @@ These reports do not establish an RNG distribution, guaranteed catches at all ro
 - **Player GREEN:** the replacement ARM64 IL2CPP build succeeded with zero errors/warnings; stripped physics metadata now retains `SphereCollider`. The Pixel 6a/API 36 installed APK hash matches `0a428058…` (61,717,813 bytes), and its fresh process reaches `BASELINE_SCENE_READY` in the foreground without Unity errors, exceptions or fatals. Full hash, logs and source provenance: `TestResults/Issue31AndroidBuild/evidence.json`. This proves clean startup, not physical reception/control-handoff acceptance.
 
 Rollback only the concrete collider lookup/comment in `SceneBootstrap.CreateVisual` and this #31 section; retain the separate #29 implementation. The failed-startup 8DF2 APK/report/debug data is archived under `Builds/Android/Archive/Issue29Reception-8df2ba31`; its original evidence and the older DA3D archive remain unchanged. Commit, push and issue closure still require separate authorization.
+
+### Held-joystick receiver control (#30, third slice of #19)
+
+A successful catch now hands the existing joystick to the receiver without requiring the finger to lift. `PlayerMovement.CreateBlockedFor` configures the receiver while its GameObject is inactive, copying the explicitly bound QB's movement camera, speed, field limits and footprint before Awake. The receiver starts movement-blocked while the route owns it; QB limits are unchanged.
+
+Frame ordering is explicit: attempt controls (-110), joystick (-100), pass input (-90), possession resolution (-50), then actor movement (0). On the catch frame the old QB is blocked, the receiver is enabled and `TouchJoystick.Retarget` immediately forwards the current screen-relative vector. The same gesture owner, device/touch identity and freshness cutoff survive. Only the new carrier consumes that frame's normal movement tick; neutral held input stays neutral. The route's continuous contact computation remains separate from render-frame human movement.
+
+Restart blocks both actors, cancels input, rebinds the explicitly bound QB and restores poses/possession. Even a throwing reset callback leaves both movement adapters blocked and Start closed until a successful retry. Focus/pause/joystick-disable callbacks clear the currently controlled actor and require a fresh touch; they do not implement #21's whole-attempt reset policy. No extra pass, scoring, automatic reset, input stack or running-camera transition is added.
+
+Actual virtual Touchscreen tests use two fingers and the real PASS charge/release path, not a direct launch shortcut. They cover same-frame handoff/no QB drift, held and centered gestures, analog speed, direction/camera axes, third-finger and same-ID other-device interference, eight edges/corners, held-input Restart and fresh QB recovery, failed-reset recovery, focus/pause/disable and subsequent fresh receiver input. Test-first RED: all three initial cases failed on the published baseline (`TestResults/20261120T145608521995Z/PlayMode.xml`); their first GREEN was 3/3 (`TestResults/20261120T145707860649Z/PlayMode.xml`). Final verification: **119 EditMode + 57 PlayMode = 176 passed**, zero failures/skips (`TestResults/20261120T150322019128Z/{EditMode,PlayMode}.xml`), with all 172 previous named cases preserved. Asset checker: 110 files, zero errors/warnings. Local verification only; independent review is unavailable.
+
+Semantic migrations preserve existing assertions and case names: the prepared receiver now has an explicitly blocked movement adapter rather than none; after a held-right catch, its X movement is human-controlled while route Z and the old QB remain stopped. Core and input dependencies stay unchanged.
+
+#### Pixel handoff checks
+
+The user confirmed six scoped scenarios on the matching Pixel 6a/API 37 APK `882577d4…` (79,358,926 bytes). Its ARM64 IL2CPP build/install/fresh startup succeeded without Unity errors; full hashes, original replies and provenance are in `TestResults/Issue30AndroidBuild/evidence.json`. The same hardware now reports API 37; earlier API 36 evidence remains historical. No OS update or project target-SDK change was performed for this delivery.
+
+1. The receiver moves after a 100% catch without lifting the held joystick finger.
+2. Reversing the joystick moves only the receiver while the QB stays still.
+3. Releasing the joystick away from an edge stops the receiver immediately.
+4. Carry Restart/Start restores QB possession and rejects the old held gesture until release/fresh press.
+5. A 100% catch without joystick input leaves the receiver stationary until input is supplied.
+6. At the right-hand limit, the receiver stays inside the field and can return without restarting.
+
+Only the last scenario is physical boundary evidence; all eight edges/corners are covered automatically, not claimed as human observations. These reports do not establish lock/unlock behavior, whole-attempt interruption handling, performance or a completed camera transition. The user requested receiver-only running focus next; #20 owns that separate delivery after #30/#19. Runtime/test/config/asset bytes and all modes still match the 176-tested, built and installed candidate; only README evidence was updated afterward. Implementation alone does not close #19/#30; publication requires separate authorization.
+
+Rollback this eight-path unit against `ee55f37`: remove `TouchJoystickTests.Handoff.cs` and its Unity-generated metadata, then revert only the three adapters' handoff/configuration/order changes, the two explicit test migrations and these README edits. Preserve the published reception/trial/primitive-retention foundations. Commit, push, closure and APK/device actions require separate authorization.
 
 ### Issue #14 physical acceptance
 

@@ -23,6 +23,20 @@ namespace FlagFootball.Unity
             MovementAllowed = allowed;
         }
 
+        internal PlayerMovement CreateBlockedFor(Transform actor)
+        {
+            actor.gameObject.SetActive(false);
+            var adapter = actor.gameObject.AddComponent<PlayerMovement>();
+            adapter.movementView = movementView;
+            adapter.maximumSpeed = maximumSpeed;
+            adapter.fieldMinimum = fieldMinimum;
+            adapter.fieldMaximum = fieldMaximum;
+            adapter.footprintRadius = footprintRadius;
+            adapter.SetMovementAllowed(false);
+            actor.gameObject.SetActive(true); // Awake sees the explicit camera and bounds, never defaults.
+            return adapter;
+        }
+
         public Vector2 MinimumPosition => fieldMinimum + Vector2.one * footprintRadius;
         public Vector2 MaximumPosition => fieldMaximum - Vector2.one * footprintRadius;
 

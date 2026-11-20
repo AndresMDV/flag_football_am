@@ -125,6 +125,15 @@ namespace FlagFootball.Unity
             if (knob) knob.anchoredPosition = Vector2.zero;
         }
 
+        // Preserve gesture ownership, freshness and screen-relative value across a possession change.
+        internal void Retarget(PlayerMovement target)
+        {
+            if (player) player.SetMoveInput(Vector2.zero);
+            player = target;
+            if (player) player.SetMoveInput(isActiveAndEnabled && hasFocus && !paused
+                ? new Vector2(gesture.Value.X, gesture.Value.Y) : Vector2.zero);
+        }
+
         private void UpdateSafeArea()
         {
             if (!safeArea || Screen.width == 0 || Screen.height == 0) return;

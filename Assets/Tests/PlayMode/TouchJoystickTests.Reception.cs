@@ -41,7 +41,8 @@ namespace FlagFootball.Tests.PlayMode
                 var target = receiver.position;
                 for (var frame = 0; frame < 10; frame++) yield return null;
                 AssertStopped(qb);
-                Assert.That(receiver.position, Is.EqualTo(target));
+                Assert.That(receiver.position.x, Is.GreaterThan(target.x), "The held gesture now controls the receiver, not the route or QB.");
+                Assert.That(receiver.position.z, Is.EqualTo(target.z));
                 Assert.That(GameObject.Find("JoystickHandle").GetComponent<RectTransform>().anchoredPosition.magnitude, Is.GreaterThan(1f));
                 if (wait == 0) Assert.That(receiver.position.z, Is.LessThan(4f), "The route must stop at catch, not finish its first leg.");
                 Assert.That(attempt.RestartAttempt(), Is.True);
