@@ -222,7 +222,10 @@ namespace FlagFootball.Unity
         {
             var visual = GameObject.CreatePrimitive(shape);
             visual.name = role;
-            Destroy(visual.GetComponent<Collider>());
+            // Keep the concrete runtime sphere component reachable in stripped players.
+            Destroy(shape == PrimitiveType.Sphere
+                ? visual.GetComponent<SphereCollider>()
+                : visual.GetComponent<Collider>());
             material = new Material(quarterback.GetComponent<Renderer>().sharedMaterial) { name = role + "Material" };
             material.SetColor("_BaseColor", color);
             visual.GetComponent<Renderer>().sharedMaterial = material;

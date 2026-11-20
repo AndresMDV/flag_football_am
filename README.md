@@ -404,6 +404,16 @@ Test-first RED with the inert API stub produced 22 expected failures out of 24 (
 
 Rollback this six-path unit against `988e548`: remove `ReceptionTrial.cs`, `ReceptionTrialTests.cs` and their Unity-generated metadata, and restore its README/glossary edits. Existing flight, timing, input and camera foundations are independent. #19 stays open until #28–#30 complete; commit/push/closure and APK/device actions require separate authorization.
 
+### Runtime primitive retention (#31)
+
+`CreateVisual` now references `SphereCollider` when discarding the sphere's generated collider. This keeps the concrete runtime dependency reachable by IL2CPP; other shapes retain the generic `Collider` fallback. Minimal stripping, visual-only collider removal and all reception/gameplay behavior stay unchanged. No global preservation configuration or unused retention fields are added.
+
+- **Player RED:** both the earlier passing APK and the first reception APK report the same missing `SphereCollider` during startup. The initial reception build's generated physics output has `BoxCollider` but no `SphereCollider`; preserved evidence is in `TestResults/Issue31AndroidBuild/before-*`.
+- **Regression alongside the #29 candidate:** 119 EditMode + 53 PlayMode = **172 passed**, zero failures/skips (`TestResults/20261120T013116362563Z/{EditMode,PlayMode}.xml`). The unchanged `PreparedActors_ExposeDistinctRolesHeldBallAndInitialFraming` test still proves ball/receiver colliders and rigidbodies are absent after initialization. Editor tests alone cannot demonstrate player stripping behavior.
+- **Player GREEN:** the replacement ARM64 IL2CPP build succeeded with zero errors/warnings; stripped physics metadata now retains `SphereCollider`. The Pixel 6a/API 36 installed APK hash matches `0a428058…` (61,717,813 bytes), and its fresh process reaches `BASELINE_SCENE_READY` in the foreground without Unity errors, exceptions or fatals. Full hash, logs and source provenance: `TestResults/Issue31AndroidBuild/evidence.json`. This proves clean startup, not physical reception/control-handoff acceptance.
+
+Rollback only the concrete collider lookup/comment in `SceneBootstrap.CreateVisual` and this #31 section; retain the separate #29 implementation. The failed-startup 8DF2 APK/report/debug data is archived under `Builds/Android/Archive/Issue29Reception-8df2ba31`; its original evidence and the older DA3D archive remain unchanged. Commit, push and issue closure still require separate authorization.
+
 ### Issue #14 physical acceptance
 
 The user confirmed all six checks on a Pixel 6a, Android API 36, using the installed ARM64/IL2CPP/OpenGL ES 3 development APK with SHA-256 `8e532743a4ed9ea7f3bec29777062800aecaf29a51ed17e57d9f889a1a597e8d`.
