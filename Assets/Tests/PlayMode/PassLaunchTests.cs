@@ -31,6 +31,7 @@ namespace FlagFootball.Tests.PlayMode
             yield return SceneManager.LoadSceneAsync("Bootstrap", LoadSceneMode.Single);
             yield return null;
             attempt = Object.FindFirstObjectByType<SceneBootstrap>();
+            Object.FindFirstObjectByType<PassReception>().enabled = false; // Keep flight/arc assertions independent of reception.
             Object.FindFirstObjectByType<TouchJoystick>().enabled = false;
             view = Camera.main;
             ground = GameObject.Find("Ground").GetComponent<Renderer>();

@@ -12,6 +12,16 @@ namespace FlagFootball.Core
 
         public Vector2 Velocity => !started || distance == totalLength ? Vector2.Zero :
             (distance <= firstLength ? firstDirection : lastDirection) * (float)speed;
+        public double TimeToCut => started && distance < firstLength ? (firstLength - distance) / speed : 0d;
+        public double TimeToStop => started ? (totalLength - distance) / speed : 0d;
+        public Vector2 SampleAfter(double deltaTime)
+        {
+            if (!double.IsFinite(deltaTime) || deltaTime < 0d) throw new ArgumentOutOfRangeException(nameof(deltaTime));
+            if (!started) return Position;
+            var future = Math.Min(totalLength, distance + speed * deltaTime);
+            return future <= firstLength ? Interpolate(start, cut, future / firstLength) :
+                Interpolate(cut, end, (future - firstLength) / lastLength);
+        }
         public Vector2 Position { get; private set; }
         public Vector2 Facing { get; private set; } = Vector2.UnitY;
 
@@ -53,9 +63,11 @@ namespace FlagFootball.Core
             Facing = Vector2.UnitY;
         }
 
-        public void Step(float deltaTime)
+        public void Step(float deltaTime) => Step((double)deltaTime);
+
+        public void Step(double deltaTime)
         {
-            if (!IsFinite(deltaTime) || deltaTime < 0f)
+            if (!double.IsFinite(deltaTime) || deltaTime < 0d)
                 throw new ArgumentOutOfRangeException(nameof(deltaTime));
             if (!started || deltaTime == 0f || distance == totalLength) return;
             distance = Math.Min(totalLength, distance + speed * deltaTime);

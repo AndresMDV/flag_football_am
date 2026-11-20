@@ -40,6 +40,7 @@ namespace FlagFootball.Tests.PlayMode
             yield return SceneManager.LoadSceneAsync("Bootstrap", LoadSceneMode.Single);
             yield return null;
             attempt = Object.FindFirstObjectByType<SceneBootstrap>();
+            Object.FindFirstObjectByType<PassReception>().enabled = false; // Isolate existing input/flight checks; reception tests opt in.
             player = attempt.Quarterback;
             receiver = attempt.Receiver;
             ball = attempt.Ball;

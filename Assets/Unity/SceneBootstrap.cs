@@ -14,6 +14,7 @@ namespace FlagFootball.Unity
         [SerializeField] private Vector2 receiverEndOffset = new Vector2(3f, 3f);
         [SerializeField, Min(0.1f)] private float receiverSpeed = 3f;
         [SerializeField, Min(0.1f)] private float passSpeed = 8f;
+        [SerializeField, Min(0.01f)] private float receptionReach = 0.8f;
         [SerializeField, Min(0.1f)] private float passArcHeight = 2.5f;
         [SerializeField, Min(0.01f)] private float minimumPassTime = 0.2f;
         [SerializeField, Min(1f)] private float passButtonDiameter = 96f;
@@ -45,13 +46,15 @@ namespace FlagFootball.Unity
         private bool resetting, resetFailed;
         private OneCutRoute receiverRoute;
         private PassFlight flight;
+        private PassReception reception;
 
         public bool IsInitialized { get; private set; }
         public PlayerMovement Quarterback => quarterback;
         public Transform Receiver => receiver;
         public Transform Ball => ball;
-        // Possession observes direct QB attachment; detached visuals have no owner.
-        public Transform BallOwner => ball && ball.parent == quarterback.transform ? quarterback.transform : null;
+        // Possession recognizes only the two explicitly bound actors; detached visuals have no owner.
+        public Transform BallOwner => !ball ? null : ball.parent == quarterback.transform ? quarterback.transform :
+            ball.parent == receiver ? receiver : null;
         public AttemptState State => lifecycle.State;
         public bool IsActive => State == AttemptState.Active;
         public FlightEnd FlightOutcome => flight?.End ?? FlightEnd.None;
@@ -62,7 +65,7 @@ namespace FlagFootball.Unity
         {
             get
             {
-                var v = IsActive && receiverRoute != null ? receiverRoute.Velocity : System.Numerics.Vector2.Zero;
+                var v = IsActive && receiverRoute != null && BallOwner != receiver ? receiverRoute.Velocity : System.Numerics.Vector2.Zero;
                 return new Vector3(v.X, 0f, v.Y);
             }
         }
@@ -87,6 +90,7 @@ namespace FlagFootball.Unity
             joystick = TouchJoystick.Create(quarterback, joystickDiameter, joystickPadding, joystickSensitivity);
             AddFieldGrid();
             CreatePreparedActors();
+            reception = PassReception.Create(transform, receptionReach);
             cameraDriver = Camera.main.GetComponent<RunningCamera>();
             cameraDriver.RefreshSubjectVisuals();
             cameraDriver.ConfigurePassing(this);
@@ -101,10 +105,26 @@ namespace FlagFootball.Unity
 
         private void Update()
         {
-            if (!IsActive || !receiver) return;
+            if (!IsActive || !receiver || BallOwner == receiver) return;
             var step = Time.deltaTime;
             if (flight != null)
             {
+                var contact = reception.FindContact(flight, receiverRoute, initialReceiverPosition.y, step, ReceptionProbability.Value);
+                if (contact.HasValue)
+                {
+                    receiverRoute.Step(contact.Value);
+                    ApplyReceiverPose();
+                    var size = ball.lossyScale;
+                    ball.SetParent(receiver, false);
+                    ball.localPosition = heldPosition;
+                    ball.localRotation = heldRotation;
+                    var scale = receiver.lossyScale;
+                    ball.localScale = new Vector3(size.x / scale.x, size.y / scale.y, size.z / scale.z);
+                    quarterback.SetMovementAllowed(false);
+                    flight = null;
+                    actionControls.RefreshState();
+                    return;
+                }
                 var before = flight.Elapsed;
                 flight.Step(step);
                 step = (float)(flight.Elapsed - before);
@@ -112,15 +132,20 @@ namespace FlagFootball.Unity
                 ball.position = new Vector3(p.X, p.Y, p.Z);
             }
             receiverRoute.Step(step);
-            var position = receiverRoute.Position;
-            var facing = receiverRoute.Facing;
-            receiver.SetPositionAndRotation(new Vector3(position.X, initialReceiverPosition.y, position.Y),
-                Quaternion.LookRotation(new Vector3(facing.X, 0f, facing.Y)));
+            ApplyReceiverPose();
             if (FlightOutcome == FlightEnd.None) return;
             lifecycle.MarkIncomplete();
             quarterback.SetMovementAllowed(false);
             joystick.ResetInput();
             actionControls.RefreshState();
+        }
+
+        private void ApplyReceiverPose()
+        {
+            var position = receiverRoute.Position;
+            var facing = receiverRoute.Facing;
+            receiver.SetPositionAndRotation(new Vector3(position.X, initialReceiverPosition.y, position.Y),
+                Quaternion.LookRotation(new Vector3(facing.X, 0f, facing.Y)));
         }
 
         // Public release boundary; invalid calls never detach the held ball.
@@ -169,6 +194,7 @@ namespace FlagFootball.Unity
             quarterback.SetMovementAllowed(false);
             lifecycle.RestartAttempt();
             flight = null;
+            reception.Clear();
             ReceptionProbability = null;
             receiverRoute.Reset();
             joystick.ResetInput();

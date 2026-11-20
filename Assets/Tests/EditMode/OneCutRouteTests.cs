@@ -81,6 +81,34 @@ namespace FlagFootball.Tests.EditMode
         }
 
         [Test]
+        public void PredictionAndBoundaryTimes_DoNotAdvanceRouteOrLoseCutAndStop()
+        {
+            var route = Create();
+            var start = route.Position;
+            Assert.That(route.SampleAfter(5d), Is.EqualTo(start));
+            Assert.That(route.TimeToCut, Is.Zero);
+            route.Start();
+            Assert.That(route.TimeToCut, Is.EqualTo(1d));
+            Assert.That(route.TimeToStop, Is.EqualTo(2d));
+            Assert.That(route.SampleAfter(1.25d), Is.EqualTo(new Vector2(2.25f, 4f)));
+            Assert.That(route.Position, Is.EqualTo(start));
+            Assert.That(route.Facing, Is.EqualTo(Vector2.UnitY));
+            route.Step(1f);
+            Assert.That(route.TimeToCut, Is.Zero);
+            Assert.That(route.TimeToStop, Is.EqualTo(1d));
+            Assert.That(route.SampleAfter(0.25d), Is.EqualTo(new Vector2(2.25f, 4f)));
+            Assert.That(route.Velocity, Is.EqualTo(Vector2.UnitY * 3f));
+            route.Step(5f);
+            Assert.That(route.TimeToStop, Is.Zero);
+            Assert.That(route.SampleAfter(5d), Is.EqualTo(route.Position));
+            route.Reset();
+            Assert.That(route.SampleAfter(5d), Is.EqualTo(start));
+            foreach (var invalid in new[] { -1d, double.NaN, double.PositiveInfinity })
+                Assert.Throws<ArgumentOutOfRangeException>(() => route.SampleAfter(invalid));
+            Assert.That(route.Position, Is.EqualTo(start));
+        }
+
+        [Test]
         public void InvalidConfigurationAndTime_AreRejectedWithoutChangingProgress()
         {
             foreach (var speed in new[] { 0f, -1f, float.NaN, float.PositiveInfinity })

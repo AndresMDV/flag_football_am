@@ -2,7 +2,7 @@
 
 A Unity URP foundation for an offline 5v5 flag football prototype. Bootstrap prepares an explicitly bound QB, receiver and visible QB-held ball, with movement blocked until Start. Start/Restart controls drive repeatable attempts: the joystick controls the QB independently of an automatic one-cut receiver route. A fixed-orientation passing camera keeps both actors, the ball and reserved indicator space visible. Automated route/framing checks do not extend the historical Pixel evidence below to this candidate.
 
-To pass, press **Start**, hold the fixed neutral **PASS** control and watch the receiver's **L1 percentage/halo** cycle red → orange → green → orange → red. Release to freeze that percentage for both throw quality and reception probability within catching range. Green is a finite timing window, not a permanent ready state; a downward swipe cancels. The joystick remains independent. Screen-edge color mirrors the receiver only while held and leaves the center clear. Actual reception belongs to #19 and is not implemented yet, so this lab still ends launched passes as incomplete until Restart.
+To pass, press **Start**, hold the fixed neutral **PASS** control and watch the receiver's **L1 percentage/halo** cycle red → orange → green → orange → red. Release to freeze that percentage for both throw quality and reception probability within catching range. Green is a finite timing window, not a permanent ready state; a downward swipe cancels. The joystick remains independent. Screen-edge color mirrors the receiver only while held and leaves the center clear. Reachable passes now resolve one reception trial. On success, the receiver holds the ball and both actors stop; receiver running with the held joystick follows in #30. A failed/missed pass ends incomplete, and Restart restores the prepared attempt.
 
 ## Run the checks
 
@@ -354,7 +354,9 @@ Test-first check: six actual-input cases failed because charge-edge feedback was
 
 The revised development APK `e4d79b365529123647bd6a125132b1564e2a99e336b8516ff48ef8baf2f5c928` (79,338,057 bytes) built with zero errors/warnings and was normally installed/hash-verified on Pixel 6a, API 36. Cold launch returned `Status: ok` and `BASELINE_SCENE_READY`; all 167 source/config/asset paths, bytes and modes stayed unchanged through build/install. The user confirmed fixed PASS/L1 visibility, held red/orange/green readiness and a single green-release pass with the edge light switching off, but rejected the overall flow and requested the receiver-cycle revision below. These observations do not accept the later cycle policy or complete #18/#27. No independent review is claimed. Rollback this six-path UI unit against local input checkpoint `34fa5c2`, reverting `PassIndicator.cs`, `ChargedPassInput.cs`, `SceneBootstrap.cs`, `PassIndicatorTests.cs`, `TouchJoystickTests.Charge.cs` and this README revision; preserve the input foundation and earlier flight/charge/joystick behavior.
 
-### Receiver timing cycles and frozen reception percentage (#27)
+### Historical receiver timing and frozen percentage delivery (#27)
+
+The reception boundary described here records #27's delivery; the visible reception adapter is added in #29 below.
 
 PASS stays neutral and fixed. The receiver keeps its blue body/team identity; its noninteractive **L1 badge and halo** now carry the changing color and numeric percentage. The 84 × 64 badge uses black text during feedback and white L1 on a dark background when idle. The full receiver halo uses the existing camera reservation; no QB bound, route, camera orientation or input backend changed. Marker, halo and screen edges cannot start or steal a pass.
 
@@ -403,6 +405,31 @@ No contact leaves `Result` Pending and consumes no draw. First eligible contact 
 Test-first RED with the inert API stub produced 22 expected failures out of 24 (`TestResults/20261119T204429153067Z/EditMode.xml`); initial focused GREEN passed 24/24. Added cases cover two disjoint arc-contact windows and caller-split receiver cuts. Final focused checks passed **27/27**, and `python3 scripts/run_unity_tests.py` passed **118 EditMode + 50 PlayMode = 168**, zero failures/skips, Editor exits 0. All 141 previous named cases remain passing. Reports: `TestResults/20261119T205055473144Z/EditMode.xml` (focused) and `TestResults/20261119T205104367777Z/{EditMode,PlayMode}.xml` (full), both ignored. Source-asset checker: 104 files, zero errors/warnings; all 172 input paths/bytes/modes stayed unchanged during full regression. Runtime harness: **N/A for this pure-Core slice**; scene attachment/possession/reset is #29, and live carrier/held-joystick handoff is #30. All existing gameplay and the installed DA3D APK are unchanged; no new physical reception or performance claim is made.
 
 Rollback this six-path unit against `988e548`: remove `ReceptionTrial.cs`, `ReceptionTrialTests.cs` and their Unity-generated metadata, and restore its README/glossary edits. Existing flight, timing, input and camera foundations are independent. #19 stays open until #28–#30 complete; commit/push/closure and APK/device actions require separate authorization.
+
+### Visible reception and receiver possession (#29, second slice of #19)
+
+`PassReception` connects the Core trial to actual ball/route samples with `receptionReach = 0.8` world units around the receiver center. It clips nonempty airborne intervals to flight end and splits them at route cut/stop times. Read-only `OneCutRoute.SampleAfter`, `TimeToCut` and `TimeToStop` predict each linear leg without advancing it; the existing float Step remains, with a double overload for exact contact-time advancement. The terminal check compares relative durations, avoiding floating-point addition that could misclassify an endpoint tie.
+
+A successful catch stops the route at contact, attaches the ball at its stored held pose while retaining world scale, recognizes the receiver as `BallOwner`, stops the QB and discards the flight. The attempt remains Active, the selected percentage stays frozen and further QB throws are rejected. **Neither actor runs after catching in this slice**: the joystick owner/vector remains captured, but movement retargeting is #30. No actor is teleported to create contact and the camera remains in the passing frame.
+
+A failed trial never retries and the unchanged trajectory continues to its ground/field-exit outcome. The adapter retains its per-flight trial across disable/re-enable; Restart explicitly clears it, restores both poses/QB possession, clears input and requires fresh touches. The normal catch path does not call `TouchJoystick.ResetInput`.
+
+Existing flight/input/indicator fixtures disable only the new reception component to keep their independent arc/gesture/visual assertions; the new `TouchJoystickTests.Reception_` cases explicitly enable actual reception. They cover moving/waiting targets, held-stick preservation, route/QB stopping, held scale, duplicate-throw rejection, carry/midflight/missed-trial Restart, zero-chance overlap and consistent outcomes/contact poses with 1/60-second versus 2-second frames across cut/stop/terminal events. The Core prediction test preserves all original route semantics. Test-first RED: `TestResults/20261119T235943401251Z/EditMode.xml` (prediction) and `TestResults/20261120T000302310427Z/PlayMode.xml` (reception). Final local regression after terminal-comparison hardening: **119 EditMode + 53 PlayMode = 172 passed**, zero failures/skips (`TestResults/20261120T001412157656Z/{EditMode,PlayMode}.xml`). All 168 previous named cases are preserved. Asset validation: 108 files, zero errors/warnings. Local verification only; independent review is unavailable.
+
+#### Pixel reception checks
+
+The user confirmed eight scoped scenarios on the corrected Pixel 6a/API 36 APK `0a428058…` (61,717,813 bytes). Full APK hash, original replies and per-scenario limits are recorded in `TestResults/Issue31AndroidBuild/evidence.json`; runtime/test/config/asset bytes and all modes still match the 172-tested, built and installed candidate.
+
+1. A stationary QB's reachable 100% pass leaves the ball with the waiting receiver.
+2. Restart after a catch returns the ball to the QB and restores both player poses.
+3. The held joystick knob remains displaced through a catch.
+4. Another PASS attempt without Restart does not launch a second throw or remove receiver possession.
+5. A pass near 20% falls short and ends Incomplete without reception.
+6. Restart from that incomplete attempt restores QB possession and both initial poses.
+7. A moving receiver catches the ball and stops its route on reception.
+8. The QB stops at reception even while the joystick remains held halfway sideways.
+
+These reports do not establish an RNG distribution, guaranteed catches at all route timings, performance, whole-attempt interruption handling or receiver human control. This slice does not deliver #30's handoff or complete the #19 parent. Rollback this twelve-path unit against `9c98dfc`: remove the new reception adapter and partial test with generated metadata, then revert route prediction, bootstrap composition, fixture isolation and these README/glossary edits. Preserve the published Core trial and earlier passing foundations.
 
 ### Runtime primitive retention (#31)
 

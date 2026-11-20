@@ -16,6 +16,10 @@ _Avoid_: Pass accuracy, pass execution quality
 The single decision about catching one pass, eligible only when the ball first reaches the receiver's catching range.
 _Avoid_: Per-frame catch roll, repeated reception attempt
 
+**Ball carrier**:
+The player currently in possession of the ball.
+_Avoid_: Controlled player, when referring only to possession
+
 **Pass execution quality**:
 How accurately a throw reaches its intended interception target.
 _Avoid_: Reception probability, catch chance
